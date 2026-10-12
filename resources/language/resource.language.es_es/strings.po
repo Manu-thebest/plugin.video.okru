@@ -1,0 +1,61 @@
+msgid ""
+msgstr ""
+"Language: es_ES\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+
+msgid "30000"
+msgstr "OK.ru"
+
+msgid "30001"
+msgstr "Modo de reproduccion"
+
+msgid "30002"
+msgstr "Calidad por defecto"
+
+msgid "30003"
+msgstr "Idioma preferido"
+
+msgid "30004"
+msgstr "Numero de resultados"
+
+msgid "30005"
+msgstr "Mostrar caratulas"
+
+msgid "30100"
+msgstr "Buscar en OK.ru"
+
+msgid "30101"
+msgstr "Buscando en OK.ru..."
+
+msgid "30102"
+msgstr "Sin resultados"
+
+msgid "30103"
+msgstr "No se han podido obtener los enlaces del video"
+
+msgid "30104"
+msgstr "HLS (auto, cambia de calidad solo)"
+
+msgid "30105"
+msgstr "Elige calidad"
+
+msgid "30106"
+msgstr "El buscador ha limitado las peticiones. Espera un minuto y vuelve a intentarlo"
+
+msgid "30110"
+msgstr "Buscar"
+
+msgid "30111"
+msgstr "Novedades"
+
+msgid "30112"
+msgstr "Por genero"
+
+msgid "30113"
+msgstr "Por anio"
+
+msgid "30114"
+msgstr "Por idioma"
+
+msgid "30115"
+msgstr "Ajustes"

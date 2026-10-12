@@ -1,0 +1,17 @@
+0.2.1
+- Busquedas mucho mas rapidas: se sondea cada segundo (de 40 s a ~1.5 s)
+- Pestana del navegador reutilizada (antes se quedaba en blanco y no encontraba nada)
+- El add-on recuerda que buscador funciona y no vuelve a probar los demas (la Pi pasa de 23 s a ~2 s)
+
+0.2.0
+- Busqueda real usando la sesion de ok.ru del navegador (ya no depende de buscadores externos)
+- Buscador local: servicio que hace las busquedas dentro de un navegador con la sesion iniciada
+- Reproduccion arreglada: los enlaces de ok.ru van firmados y necesitan la sesion (cookie + referer)
+- Cache de 24 h en las busquedas (la segunda vez es instantanea)
+- Pestana reutilizada: las busquedas bajan de ~20 s a ~6 s
+- Menu: Buscar / Novedades / Por genero / Por anio / Por idioma / Ajustes
+- Textos en claro (algunos Kodi no cargan los ficheros de idioma y salian vacios)
+- Ajustes con los tipos que acepta Kodi 20/21 (string/boolean)
+
+0.1.0
+- Primera version

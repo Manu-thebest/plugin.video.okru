@@ -1,0 +1,73 @@
+<?xml version="1.0" encoding="utf-8" standalone="yes"?>
+<settings version="1">
+  <section id="plugin.video.okru">
+    <category id="general" label="OK.ru">
+      <group id="1">
+        <setting id="modo_reproduccion" type="string" label="Modo de reproduccion">
+          <level>0</level><default>preguntar</default>
+          <constraints><options>
+            <option label="Preguntar cada vez">preguntar</option>
+            <option label="HLS (calidad automatica)">hls</option>
+            <option label="Elegir fichero mp4">mp4</option>
+          </options></constraints>
+          <control type="list" format="string"><heading>Modo de reproduccion</heading></control>
+        
+          <help>Preguntar: te ofrezco las calidades cada vez. HLS: deja que Kodi cambie la calidad solo (necesita inputstream.adaptive).</help>
+        </setting>
+        <setting id="servicio_url" type="string" label="Buscador (donde esta el navegador con la sesion)">
+          <level>0</level>
+          <default /><default>http://127.0.0.1:9223</default>
+          <help>En el equipo principal: http://127.0.0.1:9223. En los demas equipos (raspberry): http://IP-DEL-PRINCIPAL:9223 asi usan su sesion sin iniciar sesion aqui.</help>
+          <control type="edit" format="string"><heading>Buscador</heading></control>
+        </setting>
+        <setting id="cookies_okru" type="string" label="Sesion de ok.ru (cookies)">
+          <level>0</level>
+          <default />
+          <control type="edit" format="string"><heading>Sesion de ok.ru (cookies)</heading></control>
+        
+          <help>Necesario para buscar: ok.ru exige estar identificado. Pega aqui las cookies de tu sesion (instrucciones en el README).</help>
+        </setting>
+        <setting id="usar_sesion" type="boolean" label="Usar mi sesion de ok.ru para buscar">
+          <level>0</level><default>true</default>
+          <control type="toggle"/>
+        
+          <help>Si esta activo, busca con tu sesion de ok.ru (fiable). Si lo desactivas, usa buscadores externos.</help>
+        </setting>
+        <setting id="calidad_defecto" type="string" label="Calidad por defecto">
+          <level>0</level><default>hd</default>
+          <constraints><options>
+            <option label="144p">lowest</option><option label="240p">low</option>
+            <option label="480p">sd</option><option label="720p">hd</option>
+            <option label="1080p">full</option><option label="1440p">quad</option>
+            <option label="2160p">ultra</option>
+          </options></constraints>
+          <control type="list" format="string"><heading>Calidad por defecto</heading></control>
+        
+          <help>Calidad que se elige sola cuando no preguntas. 1080p suele ir bien.</help>
+        </setting>
+        <setting id="idioma_preferido" type="string" label="Idioma preferido">
+          <level>0</level><default>Castellano</default>
+          <constraints><options>
+            <option label="Castellano">Castellano</option><option label="Latino">Latino</option>
+            <option label="VOSE">VOSE</option><option label="Cualquiera">Cualquiera</option>
+          </options></constraints>
+          <control type="list" format="string"><heading>Idioma preferido</heading></control>
+        
+          <help>Filtra los resultados por idioma. Cualquiera = sin filtro.</help>
+        </setting>
+        <setting id="resultados" type="integer" label="Numero de resultados">
+          <level>0</level><default>30</default>
+          <control type="edit" format="integer"><heading>Numero de resultados</heading></control>
+        
+          <help>Cuantos resultados buscar en cada consulta (10-100).</help>
+        </setting>
+        <setting id="mostrar_caratulas" type="boolean" label="Mostrar caratulas">
+          <level>0</level><default>true</default>
+          <control type="toggle"/>
+        
+          <help>Descargar y mostrar las caratulas. Si va lento, desactivalo.</help>
+        </setting>
+      </group>
+    </category>
+  </section>
+</settings>
