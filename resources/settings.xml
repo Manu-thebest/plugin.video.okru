@@ -1,84 +1,63 @@
 <?xml version="1.0" encoding="utf-8" standalone="yes"?>
-<settings version="2">
-  <section id="plugin.video.okru" label="OK.ru">
+<settings version="1">
+  <section id="plugin.video.okru">
     <category id="general" label="OK.ru">
-      <group id="1" label="Reproduccion">
-        <setting id="modo_reproduccion" type="enum" label="Como reproducir" values="Preguntar cada vez|HLS (calidad automatica)|MP4 (recomendado)|Solo MP4" default="2">
-          <level>0</level>
-          <control type="list" format="integer"/>
-          <help>MP4 es lo mas compatible y ademas cierra al instante al cancelar. El HLS deja elegir calidad sobre la marcha, pero a veces tarda en soltar (Kodi se queda pensando).</help>
+      <group id="1">
+        <setting id="modo_reproduccion" type="enum" label="Reproduccion" values="Preguntar|HLS (calidad automatica)|MP4 (el mas compatible)|Solo MP4" default="0">
+            <level>0</level>
         </setting>
-        <setting id="calidad_defecto" type="string" label="Calidad por defecto">
+        <setting id="servicio_url" type="string" label="Buscador (donde esta el navegador con la sesion)">
           <level>0</level>
-          <default>hd</default>
-          <constraints>
-            <options>
-              <option label="144p (la mas baja)">lowest</option>
-              <option label="240p">low</option>
-              <option label="480p">sd</option>
-              <option label="720p (HD)">hd</option>
-              <option label="1080p (Full HD)">full</option>
-              <option label="1440p (2K)">quad</option>
-              <option label="2160p (4K)">ultra</option>
-            </options>
-          </constraints>
-          <control type="list" format="string"/>
-          <help>La que se usa sola cuando no quieres elegir. 720p o 1080p van bien en la tele.</help>
-        </setting>
-      </group>
-
-      <group id="2" label="Idioma y resultados">
-        <setting id="idioma_preferido" type="string" label="Idioma preferido">
-          <level>0</level>
-          <default>Castellano</default>
-          <constraints>
-            <options>
-              <option label="Castellano">Castellano</option>
-              <option label="Latino">Latino</option>
-              <option label="VOSE (subtitulado)">VOSE</option>
-              <option label="Cualquiera (sin filtro)">Cualquiera</option>
-            </options>
-          </constraints>
-          <control type="list" format="string"/>
-          <help>Filtra los resultados por idioma. "Cualquiera" no filtra nada.</help>
-        </setting>
-        <setting id="resultados" type="integer" label="Cuantos resultados">
-          <level>0</level>
-          <default>30</default>
-          <constraints>
-            <minimum>10</minimum>
-            <maximum>100</maximum>
-            <step>10</step>
-          </constraints>
-          <control type="slider" format="integer"/>
-          <help>Cuantos videos trae en cada busqueda. Mas cantidad tarda un poco mas.</help>
-        </setting>
-        <setting id="mostrar_caratulas" type="boolean" label="Mostrar caratulas">
-          <level>0</level>
-          <default>true</default>
-          <control type="toggle"/>
-          <help>Descarga y muestra la imagen de cada video. Si vas sobrado de velocidad, dejalo activado.</help>
-        </setting>
-      </group>
-
-      <group id="3" label="Sesion de ok.ru (para buscar)">
-        <setting id="usar_sesion" type="boolean" label="Buscar con mi sesion de ok.ru">
-          <level>0</level>
-          <default>true</default>
-          <control type="toggle"/>
-          <help>ok.ru no deja buscar si no has entrado. Con esto activado se usa tu sesion, que es lo que funciona de verdad.</help>
-        </setting>
-        <setting id="servicio_url" type="string" label="Direccion del buscador">
-          <level>0</level>
-          <default>http://127.0.0.1:9223</default>
-          <control type="edit" format="string"/>
-          <help>En el equipo principal (donde esta el navegador con tu sesion): http://127.0.0.1:9223. En los demas equipos (por ejemplo la raspberry): http://IP-DEL-PRINCIPAL:9223, asi aprovechan esa misma sesion sin entrar aqui.</help>
+          <default /><default>http://127.0.0.1:9223</default>
+          <help>En el equipo principal: http://127.0.0.1:9223. En los demas equipos (raspberry): http://IP-DEL-PRINCIPAL:9223 asi usan su sesion sin iniciar sesion aqui.</help>
+          <control type="edit" format="string"><heading>Buscador</heading></control>
         </setting>
         <setting id="cookies_okru" type="string" label="Sesion de ok.ru (cookies)">
           <level>0</level>
-          <default></default>
-          <control type="edit" format="string"/>
-          <help>Solo hace falta si este equipo no puede usar el buscador. Pega aqui las cookies de una sesion de ok.ru (en el README estan los pasos). Sin esto, la busqueda no puede funcionar.</help>
+          <default />
+          <control type="edit" format="string"><heading>Sesion de ok.ru (cookies)</heading></control>
+        
+          <help>Necesario para buscar: ok.ru exige estar identificado. Pega aqui las cookies de tu sesion (instrucciones en el README).</help>
+        </setting>
+        <setting id="usar_sesion" type="boolean" label="Usar mi sesion de ok.ru para buscar">
+          <level>0</level><default>true</default>
+          <control type="toggle"/>
+        
+          <help>Si esta activo, busca con tu sesion de ok.ru (fiable). Si lo desactivas, usa buscadores externos.</help>
+        </setting>
+        <setting id="calidad_defecto" type="string" label="Calidad por defecto">
+          <level>0</level><default>hd</default>
+          <constraints><options>
+            <option label="144p">lowest</option><option label="240p">low</option>
+            <option label="480p">sd</option><option label="720p">hd</option>
+            <option label="1080p">full</option><option label="1440p">quad</option>
+            <option label="2160p">ultra</option>
+          </options></constraints>
+          <control type="list" format="string"><heading>Calidad por defecto</heading></control>
+        
+          <help>Calidad que se elige sola cuando no preguntas. 1080p suele ir bien.</help>
+        </setting>
+        <setting id="idioma_preferido" type="string" label="Idioma preferido">
+          <level>0</level><default>Castellano</default>
+          <constraints><options>
+            <option label="Castellano">Castellano</option><option label="Latino">Latino</option>
+            <option label="VOSE">VOSE</option><option label="Cualquiera">Cualquiera</option>
+          </options></constraints>
+          <control type="list" format="string"><heading>Idioma preferido</heading></control>
+        
+          <help>Filtra los resultados por idioma. Cualquiera = sin filtro.</help>
+        </setting>
+        <setting id="resultados" type="integer" label="Numero de resultados">
+          <level>0</level><default>30</default>
+          <control type="edit" format="integer"><heading>Numero de resultados</heading></control>
+        
+          <help>Cuantos resultados buscar en cada consulta (10-100).</help>
+        </setting>
+        <setting id="mostrar_caratulas" type="boolean" label="Mostrar caratulas">
+          <level>0</level><default>true</default>
+          <control type="toggle"/>
+        
+          <help>Descargar y mostrar las caratulas. Si va lento, desactivalo.</help>
         </setting>
       </group>
     </category>
