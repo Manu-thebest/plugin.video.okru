@@ -3,16 +3,8 @@
   <section id="plugin.video.okru">
     <category id="general" label="OK.ru">
       <group id="1">
-        <setting id="modo_reproduccion" type="string" label="Modo de reproduccion">
-          <level>0</level><default>preguntar</default>
-          <constraints><options>
-            <option label="Preguntar cada vez">preguntar</option>
-            <option label="HLS (calidad automatica)">hls</option>
-            <option label="Elegir fichero mp4">mp4</option>
-          </options></constraints>
-          <control type="list" format="string"><heading>Modo de reproduccion</heading></control>
-        
-          <help>Preguntar: te ofrezco las calidades cada vez. HLS: deja que Kodi cambie la calidad solo (necesita inputstream.adaptive).</help>
+        <setting id="modo_reproduccion" type="enum" label="Reproduccion" values="Preguntar|HLS (calidad automatica)|MP4 (el mas compatible)|Solo MP4" default="0">
+            <level>0</level>
         </setting>
         <setting id="servicio_url" type="string" label="Buscador (donde esta el navegador con la sesion)">
           <level>0</level>

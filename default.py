@@ -150,7 +150,17 @@ def reproducir(url, titulo):
     if not calidades and not hls:
         notificar("OK.ru", "No se han podido obtener los enlaces del video")
         return
-    modo = ajuste("modo_reproduccion", "preguntar")
+    modo = ajuste("modo_reproduccion", "0")
+    # el ajuste es una lista: 0 preguntar, 1 HLS, 2 MP4, 3 solo MP4.
+    # (los ajustes viejos guardaban el texto "hls"/"preguntar": se respetan)
+    if modo in ("1", "hls"):
+        modo = "hls"
+    elif modo == "2":
+        modo = "mp4"
+    elif modo == "3":
+        modo = "solo_mp4"
+    else:
+        modo = "preguntar"
     elegido, es_hls = None, False
     if modo == "hls" and hls:
         elegido, es_hls = hls, True
@@ -187,7 +197,6 @@ def reproducir(url, titulo):
         notificar("OK.ru", "No se han podido obtener los enlaces del video")
         return
     li = xbmcgui.ListItem(label=titulo or info.get("titulo") or "OK.ru", path=elegido)
-    li.setInfo("video", {"title": titulo or info.get("titulo", "")})
 
     # el enlace de ok.ru va firmado: hay que mandarle las cookies y el referer
     cookies = okru.cookies_del_servicio()
@@ -195,18 +204,21 @@ def reproducir(url, titulo):
     if cookies:
         cabeceras += "&Cookie=%s" % cookies
 
-    # el HLS es lo que Kodi maneja mejor con sesion (permite cambiar calidad solo)
-    if hls and (es_hls or not calidades):
-        elegido, es_hls = hls, True
-
-    li = xbmcgui.ListItem(label=titulo or info.get("titulo") or "OK.ru", path=elegido)
-    li.setInfo("video", {"title": titulo or info.get("titulo", "")})
-    li.setProperty("inputstream", "inputstream.adaptive")
-    li.setProperty("inputstream.adaptive.stream_headers", cabeceras)
-    li.setProperty("inputstream.adaptive.manifest_headers", cabeceras)
-    li.setProperty("inputstream.adaptive.manifest_type", "hls" if es_hls else "mpd")
     if es_hls:
+        # HLS: calidad automatica, pero el reproductor adaptativo tarda en soltar
+        # el hilo al cancelar (Kodi se queda en "waiting for threads to exit").
+        li.setInfo("video", {"title": titulo or info.get("titulo", "")})
+        li.setProperty("inputstream", "inputstream.adaptive")
+        li.setProperty("inputstream.adaptive.stream_headers", cabeceras)
+        li.setProperty("inputstream.adaptive.manifest_headers", cabeceras)
         li.setMimeType("application/vnd.apple.mpegurl")
+    else:
+        # mp4 directo: lo reproduce el reproductor normal de Kodi y al cancelar
+        # cierra al instante. Necesita las cabeceras por el enlace firmado.
+        li.setInfo("video", {"title": titulo or info.get("titulo", "")})
+        li.setMimeType("video/mp4")
+        # la barra vertical separa la direccion de sus cabeceras (formato de Kodi)
+        li.setPath("%s|%s" % (elegido, cabeceras))
     li.setProperty("IsPlayable", "true")
     xbmcplugin.setResolvedUrl(HANDLE, True, li)
 

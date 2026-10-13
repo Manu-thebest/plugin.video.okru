@@ -1,3 +1,12 @@
+0.2.3
+ - ARREGLO: al cancelar mientras carga, Kodi se quedaba colgado
+   (el reproductor adaptativo no soltaba el hilo). Ahora se puede elegir MP4,
+   que lo cierra al instante.
+ - Nuevo ajuste de reproduccion: Preguntar / HLS / MP4 (recomendado) / Solo MP4
+ - Ya no se fuerza el HLS si tu has elegido MP4 (antes lo sobreescribia)
+ - Quitada la opcion manifest_type, que Kodi 21 ya no usa
+ - Espera maxima al abrir una peli: de 25 s a 10 s
+
 0.2.2
  - La ficha del video se pide comprimida (gzip): 1,2 MB -> 300 KB, la mitad de tiempo
  - Cache de la ficha (24 h, en memoria y en disco): la segunda vez es instantanea
