@@ -150,7 +150,7 @@ def reproducir(url, titulo):
     if not calidades and not hls:
         notificar("OK.ru", "No se han podido obtener los enlaces del video")
         return
-    modo = ajuste("modo_reproduccion", "0")
+    modo = ajuste("modo_reproduccion", "2")
     # el ajuste es una lista: 0 preguntar, 1 HLS, 2 MP4, 3 solo MP4.
     # (los ajustes viejos guardaban el texto "hls"/"preguntar": se respetan)
     if modo in ("1", "hls"):
