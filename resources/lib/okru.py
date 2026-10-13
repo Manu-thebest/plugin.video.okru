@@ -7,6 +7,7 @@ Estructura basada en el funcionamiento del addon Alfa:
  - dentro esta el array "videos": [{"name":"hd","url":"..."}] con las calidades,
    y "hlsManifestUrl" con el manifiesto HLS.
 """
+import os
 import re
 import html
 import json
@@ -40,14 +41,63 @@ def log(msg):
         print("[plugin.video.okru] %s" % msg)
 
 
+_META_CACHE = {}           # url -> (cuando, (calidades, hls, info))
+_META_TTL = 24 * 3600      # la ficha se guarda 24 h
+
+
+def _cache_meta_fichero():
+    """Ruta del fichero de cache, si estamos dentro de Kodi."""
+    try:
+        import xbmcvfs
+        carpeta = xbmcvfs.translatePath("special://profile/addon_data/plugin.video.okru/")
+        if not os.path.isdir(carpeta):
+            os.makedirs(carpeta)
+        return os.path.join(carpeta, "metadatos.json")
+    except Exception:
+        return ""
+
+
+def _guardar_meta(url, calidades, hls, info, cuando):
+    """Guarda la ficha en memoria y en disco (sin dejar crecer el fichero)."""
+    _META_CACHE[url] = (cuando, (calidades, hls, info))
+    fichero = _cache_meta_fichero()
+    if not fichero:
+        return
+    try:
+        guardado = {}
+        if os.path.exists(fichero):
+            with open(fichero, "r") as f:
+                guardado = json.load(f)
+        # poda: fuera lo caducado y como mucho 200 fichas
+        guardado = {k: v for k, v in guardado.items()
+                    if cuando - v.get("t", 0) < _META_TTL and k != url}
+        if len(guardado) >= 200:
+            for k in sorted(guardado, key=lambda x: guardado[x].get("t", 0))[:50]:
+                guardado.pop(k, None)
+        guardado[url] = {"t": cuando, "calidades": calidades, "hls": hls, "info": info}
+        with open(fichero, "w") as f:
+            json.dump(guardado, f)
+    except Exception:
+        pass
+
+
 def _get(url, extra=None):
     h = {"User-Agent": UA, "Accept-Language": "es-ES,es;q=0.9,en;q=0.8",
-         "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"}
+         "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+         # ok.ru manda esta pagina sin comprimir si no se pide: 1,2 MB.
+         # Pidiendola con gzip baja a ~300 KB y tarda la mitad.
+         "Accept-Encoding": "gzip"}
     if extra:
         h.update(extra)
     req = urllib.request.Request(url, headers=h)
     with urllib.request.urlopen(req, timeout=TIMEOUT) as r:
         data = r.read()
+        if "gzip" in (r.headers.get("Content-Encoding") or "").lower():
+            import gzip as _gzip
+            try:
+                data = _gzip.decompress(data)
+            except Exception:
+                pass
     try:
         return data.decode("utf-8")
     except Exception:
@@ -189,8 +239,35 @@ def desescapar(texto):
     return t
 
 
-def metadatos(url):
-    """Devuelve (calidades, hls, info) de un video de ok.ru."""
+def metadatos(url, _forzar=False):
+    """Devuelve (calidades, hls, info) de un video de ok.ru.
+
+    Va cacheado: la pagina pesa ~1,2 MB y tarda ~1 s, asi que la segunda vez
+    que se abre el mismo video (volver a mirarlo, cambiar de calidad, volver
+    atras y entrar otra vez) es instantanea.
+    """
+    ahora = time.time()
+
+    # 1) cache en memoria
+    d = _META_CACHE.get(url)
+    if d and not _forzar and ahora - d[0] < _META_TTL:
+        return d[1]
+
+    # 2) cache en disco, por si Kodi se reinicia entre medias
+    fichero = _cache_meta_fichero()
+    if fichero and not _forzar:
+        try:
+            if os.path.exists(fichero):
+                with open(fichero, "r") as f:
+                    guardado = json.load(f)
+                reg = guardado.get(url)
+                if reg and ahora - reg.get("t", 0) < _META_TTL:
+                    dato = (reg["calidades"], reg["hls"], reg["info"])
+                    _META_CACHE[url] = (reg["t"], dato)
+                    return dato
+        except Exception:
+            pass
+
     pagina = _get(url)
     d = desescapar(pagina)
 
@@ -221,6 +298,7 @@ def metadatos(url):
     hls = m.group(1).replace("\\/", "/") if m else ""
 
     log("metadatos: %d calidades, hls=%s" % (len(calidades), "si" if hls else "no"))
+    _guardar_meta(url, calidades, hls, info, ahora)
     return calidades, hls, info
 
 

@@ -1,3 +1,8 @@
+0.2.2
+ - La ficha del video se pide comprimida (gzip): 1,2 MB -> 300 KB, la mitad de tiempo
+ - Cache de la ficha (24 h, en memoria y en disco): la segunda vez es instantanea
+ - Poda automatica de la cache para que no crezca sin control
+
 0.2.1
 - Busquedas mucho mas rapidas: se sondea cada segundo (de 40 s a ~1.5 s)
 - Pestana del navegador reutilizada (antes se quedaba en blanco y no encontraba nada)
