@@ -15,12 +15,19 @@ import xbmcplugin  # noqa: E402
 
 import okru  # noqa: E402
 
-# sesion de ok.ru: si el usuario la ha pegado en los ajustes, la usamos
+from kodiutils import ADDON_ID, HANDLE, ajuste, notificar  # noqa: E402
+
+# OJO, ESTE ERA UN BUG GORDO: estos dos bloques usaban ajuste() y estaban
+# COLOCADOS ANTES del "from kodiutils import ... ajuste" de la linea de arriba.
+# En Python eso da NameError, y como el try/except se lo comia en silencio,
+# las cookies y la direccion del buscador NUNCA se cargaban: el addon tiraba
+# siempre de la lista de direcciones por defecto.
 try:
     if ajuste("usar_sesion", "true") == "true":
         okru.set_cookies(ajuste("cookies_okru", ""))
 except Exception:
-    pass
+    import traceback
+    xbmc.log("OK.ru: no pude leer las cookies: " + traceback.format_exc(), xbmc.LOGERROR)
 
 # donde esta el buscador (127.0.0.1 en este equipo; la IP del principal en los demas)
 try:
@@ -28,8 +35,28 @@ try:
     if _srv:
         okru.set_servicio(_srv)
 except Exception:
-    pass
-from kodiutils import ADDON_ID, HANDLE, ajuste, notificar  # noqa: E402
+    import traceback
+    xbmc.log("OK.ru: no pude leer el buscador: " + traceback.format_exc(), xbmc.LOGERROR)
+
+# El ajuste de calidad guarda el TEXTO de la opcion ("720p (HD)"). Aqui se traduce
+# al nombre interno que usa la pagina de ok.ru. Se aceptan tambien los nombres
+# internos y los valores viejos, para que un ajuste ya guardado siga valiendo.
+CALIDADES_UI = {
+    "144p (la más baja)": "lowest", "144p (la mas baja)": "lowest", "144p": "lowest",
+    "240p": "low", "480p": "sd", "720p (HD)": "hd", "720p": "hd",
+    "1080p (Full HD)": "full", "1080p": "full",
+    "1440p (2K)": "quad", "1440p": "quad", "2160p (4K)": "ultra", "2160p": "ultra",
+}
+
+
+def _calidad_pref():
+    """Calidad preferida, en el nombre interno que entiende ok.ru."""
+    v = (ajuste("calidad_defecto", "hd") or "").strip()
+    if v in CALIDADES_UI:
+        return CALIDADES_UI[v]
+    if v in ("lowest", "low", "sd", "hd", "full", "quad", "ultra"):
+        return v
+    return "hd"
 
 BASE = "plugin://%s/" % ADDON_ID
 
@@ -49,7 +76,7 @@ def menu_principal():
         ("Buscar", {"action": "buscar"}, "DefaultAddonsSearch.png"),
         ("Novedades", {"action": "novedades"}, "DefaultRecentlyAddedMovies.png"),
         ("Por genero", {"action": "generos"}, "DefaultGenre.png"),
-        ("Por anio", {"action": "anios"}, "DefaultYear.png"),
+        ("Por año", {"action": "anios"}, "DefaultYear.png"),
         ("Por idioma", {"action": "idiomas"}, "DefaultLanguage.png"),
         ("Ajustes", {"action": "config"}, "DefaultAddonProgram.png"),
     ]
@@ -94,7 +121,11 @@ def buscar():
     teclado = xbmcgui.Dialog().input("Buscar en OK.ru", type=xbmcgui.INPUT_ALPHANUM)
     if not teclado:
         return
-    _con_progreso(lambda lim: okru.buscar(teclado, lim), teclado)
+    # Antes esto llamaba a okru.buscar(), que son SOLO los buscadores externos:
+    # y esos se limitan por IP, asi que la busqueda manual era la que mas fallaba.
+    # Ahora va por el mismo camino que las secciones: primero el buscador con tu
+    # sesion y, si no esta, los buscadores externos de respaldo.
+    _con_progreso(lambda lim: okru.buscar_inteligente(teclado, lim), teclado)
 
 
 def _con_progreso(fn, titulo_listado=""):
@@ -103,12 +134,22 @@ def _con_progreso(fn, titulo_listado=""):
     prog.create("OK.ru", "Buscando en OK.ru...")
     try:
         resultados = fn(limite)
-    except okru.BuscadorLimitado:
-        notificar("OK.ru", "El buscador nos ha limitado. Espera un minuto y reintenta")
+    except okru.BuscadorLimitado as e:
+        # se guarda el motivo en el registro: "sin resultados" a secas no permite
+        # saber si el buscador no responde, si la sesion ha caducado o si de verdad
+        # no hay nada.
+        xbmc.log("OK.ru: no he podido buscar: %s" % e, xbmc.LOGERROR)
+        notificar("OK.ru", "No he podido buscar. %s" % str(e)[:70])
+        return
+    except Exception:
+        import traceback
+        xbmc.log("OK.ru: error buscando: " + traceback.format_exc(), xbmc.LOGERROR)
+        notificar("OK.ru", "Error buscando. Mira el registro de Kodi")
         return
     finally:
         prog.close()
     if not resultados:
+        xbmc.log("OK.ru: la busqueda no devolvio nada", xbmc.LOGERROR)
         notificar("OK.ru", "Sin resultados")
         return
     pref = _idioma_pref()
@@ -140,6 +181,9 @@ def listar(resultados):
         li.setInfo("video", {"title": r["titulo"], "plot": r.get("sinopsis", ""),
                              "genre": r.get("idioma", ""), "year": r.get("anio") or 0})
         li.setProperty("IsPlayable", "true")
+        # menú contextual (botón derecho, o tecla C en el mando): Descargar
+        li.addContextMenuItems([("Descargar este vídeo", "RunPlugin(%s)" % url_for(
+            action="descargar", url=r["url"], titulo=r["titulo"]))])
         xbmcplugin.addDirectoryItem(HANDLE, url_for(action="play", url=r["url"], titulo=r["titulo"]),
                                     li, isFolder=False)
     xbmcplugin.endOfDirectory(HANDLE, cacheToDisc=False)
@@ -162,6 +206,7 @@ def reproducir(url, titulo):
     else:
         modo = "preguntar"
     elegido, es_hls = None, False
+    pref = _calidad_pref()          # calidad preferida, ya traducida al nombre interno
     if modo == "hls" and hls:
         elegido, es_hls = hls, True
     if elegido is None and modo == "preguntar":
@@ -175,7 +220,7 @@ def reproducir(url, titulo):
         if not opciones:
             notificar("OK.ru", "No se han podido obtener los enlaces del video")
             return
-        pref = ajuste("calidad_defecto", "hd")
+        pref = _calidad_pref()
         indice = 0
         for n, (tipo, v) in enumerate(valores):
             if tipo == "mp4" and pref in opciones[n]:
@@ -188,7 +233,7 @@ def reproducir(url, titulo):
         es_hls = (tipo == "hls")
     elif elegido is None:
         for c in calidades:
-            if c["nombre"] == ajuste("calidad_defecto", "hd"):
+            if c["nombre"] == pref:
                 elegido = c["url"]
                 break
         if elegido is None and calidades:
@@ -223,6 +268,106 @@ def reproducir(url, titulo):
     xbmcplugin.setResolvedUrl(HANDLE, True, li)
 
 
+def _nombre_fichero(texto):
+    """Nombre de fichero limpio a partir del titulo del video."""
+    import re as _re
+    t = _re.sub(r"\[/?COLOR[^\]]*\]", " ", texto or "")   # quitar el color del listado
+    t = _re.sub(r"\[[^\]]{1,20}\]", " ", t)               # quitar [1080p], [4K], etc.
+    t = _re.sub(r'[\\/:*?"<>|]+', " ", t)                 # caracteres que no valen
+    t = _re.sub(r"\s+", " ", t).strip()
+    return (t or "video ok.ru")[:120]
+
+
+def _mb(n):
+    try:
+        return "%.1f MB" % (n / 1048576.0) if n else "?"
+    except Exception:
+        return "?"
+
+
+def descargar(url, titulo):
+    """Descarga un video a la carpeta que diga el ajuste.
+
+    Se hace aqui y no con una descarga normal de Kodi porque los enlaces de
+    ok.ru van firmados y exigen mandar Cookie + Referer.
+    """
+    try:
+        calidades, hls, info = okru.metadatos(url)
+    except Exception:
+        import traceback
+        xbmc.log("OK.ru: error leyendo la ficha para descargar: " + traceback.format_exc(),
+                 xbmc.LOGERROR)
+        notificar("OK.ru", "No he podido leer el vídeo")
+        return
+    # Solo el mp4 directo. El HLS son trocitos (m3u8) que habría que bajar
+    # todos y unirlos: se puede, pero es otro trabajo.
+    if not calidades:
+        notificar("OK.ru", "Este vídeo no tiene enlace directo para descargar")
+        return
+
+    pref = _calidad_pref()
+    opciones = ["%s [%s]" % (c["etiqueta"], c["nombre"]) for c in calidades]
+    indice = 0
+    for n, c in enumerate(calidades):
+        if c["nombre"] == pref:
+            indice = n
+            break
+    sel = xbmcgui.Dialog().select("Calidad para descargar", opciones, preselect=indice)
+    if sel < 0:
+        return
+    elegido = calidades[sel]
+
+    # Carpeta: la del ajuste y, si está vacía, se la pregunto una vez y la guardo.
+    import xbmcvfs
+    carpeta = (ajuste("carpeta_descargas", "") or "").strip()
+    if not carpeta:
+        carpeta = xbmcgui.Dialog().browse(3, "¿Dónde guardo los vídeos?", "files")
+        if not carpeta:
+            return
+        try:
+            xbmcaddon.Addon().setSetting("carpeta_descargas", carpeta)
+        except Exception:
+            pass
+    carpeta = xbmcvfs.translatePath(carpeta)
+    if not os.path.isdir(carpeta):
+        try:
+            os.makedirs(carpeta)
+        except Exception:
+            notificar("OK.ru", "No puedo escribir en esa carpeta")
+            return
+
+    nombre = _nombre_fichero(titulo or info.get("titulo") or "video ok.ru") + ".mp4"
+    destino = os.path.join(carpeta, nombre)
+    prog = xbmcgui.DialogProgress()
+    prog.create("Descargando de OK.ru", nombre)
+
+    def _prog(leidos, total):
+        pct = int(leidos * 100 / total) if total else 0
+        prog.update(pct, "%s / %s" % (_mb(leidos), _mb(total)) if total else _mb(leidos))
+
+    try:
+        ok = okru.descargar_video(elegido["url"], destino, progreso=_prog,
+                                  cancelado=prog.iscanceled)
+    except Exception:
+        import traceback
+        xbmc.log("OK.ru: error descargando: " + traceback.format_exc(), xbmc.LOGERROR)
+        notificar("OK.ru", "Error al descargar. Mira el registro de Kodi")
+        ok = False
+    finally:
+        prog.close()
+
+    if ok:
+        xbmc.log("OK.ru: descargado %s" % destino, xbmc.LOGINFO)
+        notificar("OK.ru", "Descargado: %s" % nombre)
+    else:
+        try:
+            if os.path.exists(destino):
+                os.remove(destino)      # no dejar medio fichero suelto
+        except Exception:
+            pass
+        notificar("OK.ru", "Descarga cancelada")
+
+
 def router(params):
     a = params.get("action")
     if a == "buscar":
@@ -246,6 +391,8 @@ def router(params):
         xbmcaddon.Addon().openSettings()
     elif a == "play":
         reproducir(params.get("url", ""), params.get("titulo", ""))
+    elif a == "descargar":
+        descargar(params.get("url", ""), params.get("titulo", ""))
     else:
         menu_principal()
 

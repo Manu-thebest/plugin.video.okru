@@ -1,3 +1,19 @@
+0.2.4
+ - ARREGLO IMPORTANTE: los ajustes salian vacios y con textos de otras pantallas
+   ("#FF000000", "??", "Suavizar"). No era el sistema de textos de Kodi: el
+   fichero de ajustes llevaba version="2", que rechaza los tipos clasicos (enum).
+   Y al fallar un ajuste se rompia el grupo entero. Ahora usa el formato clasico,
+   el mismo que el resto de add-ons.
+ - ARREGLO: las cookies y la direccion del buscador no se cargaban nunca (se
+   llamaba a una funcion antes de importarla y el error se tragaba en silencio).
+ - ARREGLO: la busqueda manual ("Buscar") usaba solo buscadores externos, que se
+   limitan por IP. Ahora usa tu sesion, igual que las demas secciones.
+ - NUEVO: descargar videos. Menu contextual sobre un video -> "Descargar este
+   video". Eliges calidad, te pregunta la carpeta la primera vez (ajuste nuevo en
+   la pestana "Descargas") y baja con barra de progreso y opcion de cancelar.
+ - El menu pone "Por año" (antes "Por anio")
+ - Los errores de busqueda ahora se registran en el log, para saber que pasa
+
 0.2.3
  - ARREGLO: al cancelar mientras carga, Kodi se quedaba colgado
    (el reproductor adaptativo no soltaba el hilo). Ahora se puede elegir MP4,

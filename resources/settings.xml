@@ -1,65 +1,59 @@
 <?xml version="1.0" encoding="utf-8" standalone="yes"?>
-<settings version="1">
-  <section id="plugin.video.okru">
-    <category id="general" label="OK.ru">
-      <group id="1">
-        <setting id="modo_reproduccion" type="enum" label="Reproduccion" values="Preguntar|HLS (calidad automatica)|MP4 (el mas compatible)|Solo MP4" default="0">
-            <level>0</level>
-        </setting>
-        <setting id="servicio_url" type="string" label="Buscador (donde esta el navegador con la sesion)">
-          <level>0</level>
-          <default /><default>http://127.0.0.1:9223</default>
-          <help>En el equipo principal: http://127.0.0.1:9223. En los demas equipos (raspberry): http://IP-DEL-PRINCIPAL:9223 asi usan su sesion sin iniciar sesion aqui.</help>
-          <control type="edit" format="string"><heading>Buscador</heading></control>
-        </setting>
-        <setting id="cookies_okru" type="string" label="Sesion de ok.ru (cookies)">
-          <level>0</level>
-          <default />
-          <control type="edit" format="string"><heading>Sesion de ok.ru (cookies)</heading></control>
-        
-          <help>Necesario para buscar: ok.ru exige estar identificado. Pega aqui las cookies de tu sesion (instrucciones en el README).</help>
-        </setting>
-        <setting id="usar_sesion" type="boolean" label="Usar mi sesion de ok.ru para buscar">
-          <level>0</level><default>true</default>
-          <control type="toggle"/>
-        
-          <help>Si esta activo, busca con tu sesion de ok.ru (fiable). Si lo desactivas, usa buscadores externos.</help>
-        </setting>
-        <setting id="calidad_defecto" type="string" label="Calidad por defecto">
-          <level>0</level><default>hd</default>
-          <constraints><options>
-            <option label="144p">lowest</option><option label="240p">low</option>
-            <option label="480p">sd</option><option label="720p">hd</option>
-            <option label="1080p">full</option><option label="1440p">quad</option>
-            <option label="2160p">ultra</option>
-          </options></constraints>
-          <control type="list" format="string"><heading>Calidad por defecto</heading></control>
-        
-          <help>Calidad que se elige sola cuando no preguntas. 1080p suele ir bien.</help>
-        </setting>
-        <setting id="idioma_preferido" type="string" label="Idioma preferido">
-          <level>0</level><default>Castellano</default>
-          <constraints><options>
-            <option label="Castellano">Castellano</option><option label="Latino">Latino</option>
-            <option label="VOSE">VOSE</option><option label="Cualquiera">Cualquiera</option>
-          </options></constraints>
-          <control type="list" format="string"><heading>Idioma preferido</heading></control>
-        
-          <help>Filtra los resultados por idioma. Cualquiera = sin filtro.</help>
-        </setting>
-        <setting id="resultados" type="integer" label="Numero de resultados">
-          <level>0</level><default>30</default>
-          <control type="edit" format="integer"><heading>Numero de resultados</heading></control>
-        
-          <help>Cuantos resultados buscar en cada consulta (10-100).</help>
-        </setting>
-        <setting id="mostrar_caratulas" type="boolean" label="Mostrar caratulas">
-          <level>0</level><default>true</default>
-          <control type="toggle"/>
-        
-          <help>Descargar y mostrar las caratulas. Si va lento, desactivalo.</help>
-        </setting>
-      </group>
+<!--
+  Ajustes de OK.ru.
+
+  ESTO ERA EL PROBLEMA, y era nuestro, no de tu Kodi:
+   - La version desplegada llevaba <settings version="2">. Con version="2" Kodi
+     espera los nombres nuevos de tipo (boolean/integer/string) y RECHAZA los
+     clasicos como "enum". Al fallar UN ajuste se rompe el grupo entero y la
+     pantalla sale vacia, con etiquetas de otras pantallas ("#FF000000", "??").
+   - Habia DOS <default> seguidos en servicio_url: eso deja el ajuste a cadena
+     vacia (asi se leian las cookies a 0 caracteres).
+
+  Formato correcto = el CLASICO, el mismo que usan los otros 46 addons de este
+  Kodi (alfa, amazon-test, movistarplus...): sin atributo version, tipos
+  bool / enum / integer / labelenum / text, y etiquetas en texto directo.
+-->
+<settings>
+    <category label="Reproducción">
+        <!-- enum guarda el INDICE de la lista (0-3). El addon lo espera asi. -->
+        <setting id="modo_reproduccion" type="enum" label="Cómo reproducir"
+                 values="Preguntar cada vez|HLS (calidad automática)|MP4 (recomendado)|Solo MP4"
+                 default="2"/>
+        <!-- labelenum guarda el TEXTO de la opcion. -->
+        <setting id="calidad_defecto" type="labelenum" label="Calidad por defecto"
+                 values="144p (la más baja)|240p|480p|720p (HD)|1080p (Full HD)|1440p (2K)|2160p (4K)"
+                 default="720p (HD)"/>
     </category>
-  </section>
+
+    <category label="Idioma y resultados">
+        <setting id="idioma_preferido" type="labelenum" label="Idioma preferido"
+                 values="Castellano|Latino|VOSE|Cualquiera" default="Castellano"/>
+        <setting id="resultados" type="integer" label="Cuántos resultados por búsqueda" default="30">
+            <level>0</level>
+            <constraints>
+                <minimum>10</minimum>
+                <maximum>100</maximum>
+                <step>10</step>
+            </constraints>
+        </setting>
+        <setting id="mostrar_caratulas" type="bool" label="Mostrar carátulas" default="true"/>
+    </category>
+
+    <category label="Sesión de ok.ru (necesaria para buscar)">
+        <setting id="usar_sesion" type="bool"
+                 label="Buscar con mi sesión de ok.ru" default="true"/>
+        <setting id="servicio_url" type="text" label="Dirección del buscador"
+                 default="http://127.0.0.1:9223"/>
+        <setting id="cookies_okru" type="text"
+                 label="Sesión de ok.ru (cookies) · solo si no hay buscador" default=""/>
+    </category>
+
+    <category label="Descargas">
+        <!-- type="folder" da botón para elegir la carpeta: es el formato que usan
+             los addons que funcionan en este Kodi (retrodeck, etc.).
+             Para descargar un vídeo: menú contextual sobre él -> "Descargar este vídeo". -->
+        <setting id="carpeta_descargas" type="folder"
+                 label="Carpeta donde guardar los vídeos" source=""/>
+    </category>
 </settings>

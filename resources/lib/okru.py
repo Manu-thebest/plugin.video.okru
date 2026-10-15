@@ -537,3 +537,45 @@ def cookies_del_servicio():
         except Exception:
             continue
     return ""
+
+
+# ---------------------------------------------------------------- descarga
+def cabeceras_video():
+    """Cabeceras que exige un enlace firmado de ok.ru (Cookie + Referer)."""
+    h = {"User-Agent": UA, "Referer": "https://ok.ru/"}
+    ck = cookies_del_servicio() or COOKIES
+    if ck:
+        h["Cookie"] = ck
+    return h
+
+
+def descargar_video(url, destino, progreso=None, cancelado=None):
+    """Descarga un enlace de ok.ru a un fichero. Devuelve True si acabo entero.
+
+    Los enlaces van FIRMADOS y exigen Cookie + Referer: por eso no vale una
+    descarga normal (Kodi no sabe mandar esas cabeceras) y la hace el addon.
+    progreso(leidos, total) se llama con cada trozo (total=0 si el servidor no
+    lo dice). cancelado() devuelve True para parar.
+    """
+    peticion = urllib.request.Request(url, headers=cabeceras_video())
+    with urllib.request.urlopen(peticion, timeout=60) as r:
+        try:
+            total = int(r.headers.get("Content-Length") or 0)
+        except Exception:
+            total = 0
+        leidos = 0
+        with open(destino, "wb") as f:
+            while True:
+                if cancelado and cancelado():
+                    return False
+                trozo = r.read(256 * 1024)
+                if not trozo:
+                    break
+                f.write(trozo)
+                leidos += len(trozo)
+                if progreso:
+                    try:
+                        progreso(leidos, total)
+                    except Exception:
+                        pass
+    return True
