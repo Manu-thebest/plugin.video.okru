@@ -1,3 +1,12 @@
+0.2.5
+ - NUEVO: las descargas van en SEGUNDO PLANO. Antes salia una ventana que no te
+   dejaba hacer nada hasta que acabara; ahora baja con una barra de fondo (arriba
+   a la derecha) y puedes seguir navegando o viendo una pelicula mientras baja.
+ - NUEVO: "Cancelar las descargas" en el menu contextual del video. Al cancelar
+   se borra el fichero a medias.
+ - Si no has elegido carpeta de descargas se usa Descargas o Videos sin
+   preguntarte nada (se cambia en Ajustes > Descargas).
+
 0.2.4
  - ARREGLO IMPORTANTE: los ajustes salian vacios y con textos de otras pantallas
    ("#FF000000", "??", "Suavizar"). No era el sistema de textos de Kodi: el

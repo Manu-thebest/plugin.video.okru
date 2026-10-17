@@ -1,6 +1,8 @@
 # -*- coding: utf-8 -*-
 import os
 import sys
+import threading
+import time
 
 import xbmcaddon
 _ADDON_PATH = xbmcaddon.Addon().getAddonInfo("path")
@@ -182,8 +184,11 @@ def listar(resultados):
                              "genre": r.get("idioma", ""), "year": r.get("anio") or 0})
         li.setProperty("IsPlayable", "true")
         # menú contextual (botón derecho, o tecla C en el mando): Descargar
-        li.addContextMenuItems([("Descargar este vídeo", "RunPlugin(%s)" % url_for(
-            action="descargar", url=r["url"], titulo=r["titulo"]))])
+        li.addContextMenuItems([
+            ("Descargar este vídeo", "RunPlugin(%s)" % url_for(
+                action="descargar", url=r["url"], titulo=r["titulo"])),
+            ("Cancelar las descargas", "RunPlugin(%s)" % url_for(action="cancelar_descargas")),
+        ])
         xbmcplugin.addDirectoryItem(HANDLE, url_for(action="play", url=r["url"], titulo=r["titulo"]),
                                     li, isFolder=False)
     xbmcplugin.endOfDirectory(HANDLE, cacheToDisc=False)
@@ -285,6 +290,48 @@ def _mb(n):
         return "?"
 
 
+def _ruta_datos():
+    """Carpeta de datos del addon: ahi van el cerrojo y la marca de cancelar."""
+    import xbmcvfs
+    base = xbmcvfs.translatePath("special://profile/addon_data/%s/" % ADDON_ID)
+    try:
+        if not os.path.isdir(base):
+            os.makedirs(base)
+    except Exception:
+        pass
+    return base
+
+
+def _limpiar_cancelar():
+    try:
+        p = os.path.join(_ruta_datos(), "cancelar")
+        if os.path.exists(p):
+            os.remove(p)
+    except Exception:
+        pass
+
+
+def _pedir_cancelar():
+    try:
+        with open(os.path.join(_ruta_datos(), "cancelar"), "w") as f:
+            f.write("1")
+    except Exception:
+        pass
+
+
+_ULT_CANCEL = [0.0, False]
+
+
+def _esta_cancelado():
+    """True si se ha pedido cancelar. Se mira como mucho una vez por segundo."""
+    ahora = time.time()
+    if ahora - _ULT_CANCEL[0] < 1.0:
+        return _ULT_CANCEL[1]
+    _ULT_CANCEL[0] = ahora
+    _ULT_CANCEL[1] = os.path.exists(os.path.join(_ruta_datos(), "cancelar"))
+    return _ULT_CANCEL[1]
+
+
 def descargar(url, titulo):
     """Descarga un video a la carpeta que diga el ajuste.
 
@@ -317,55 +364,127 @@ def descargar(url, titulo):
         return
     elegido = calidades[sel]
 
-    # Carpeta: la del ajuste y, si está vacía, se la pregunto una vez y la guardo.
+    # Carpeta: la del ajuste. Si esta vacia se usa una por defecto SIN preguntar
+    # nada (el que quiera otra la cambia en Ajustes > Descargas).
     import xbmcvfs
     carpeta = (ajuste("carpeta_descargas", "") or "").strip()
     if not carpeta:
-        carpeta = xbmcgui.Dialog().browse(3, "¿Dónde guardo los vídeos?", "files")
+        casa = os.path.expanduser("~")
+        for candidata in ("Descargas", "Downloads", "Vídeos", "Videos"):
+            posible = os.path.join(casa, candidata)
+            if os.path.isdir(posible):
+                carpeta = posible
+                break
         if not carpeta:
-            return
-        try:
-            xbmcaddon.Addon().setSetting("carpeta_descargas", carpeta)
-        except Exception:
-            pass
+            carpeta = xbmcvfs.translatePath(
+                "special://profile/addon_data/%s/descargas" % ADDON_ID)
     carpeta = xbmcvfs.translatePath(carpeta)
     if not os.path.isdir(carpeta):
         try:
             os.makedirs(carpeta)
         except Exception:
-            notificar("OK.ru", "No puedo escribir en esa carpeta")
+            notificar("OK.ru", "No puedo escribir en la carpeta de descargas")
             return
 
     nombre = _nombre_fichero(titulo or info.get("titulo") or "video ok.ru") + ".mp4"
     destino = os.path.join(carpeta, nombre)
-    prog = xbmcgui.DialogProgress()
-    prog.create("Descargando de OK.ru", nombre)
+    # Se lanza en un hilo aparte: el addon termina al momento y Kodi sigue
+    # usable (puedes seguir navegando o poner una pelicula mientras baja).
+    _limpiar_cancelar()
+    hilo = threading.Thread(target=_hilo_descarga, args=(elegido["url"], destino, nombre))
+    hilo.daemon = True
+    hilo.start()
+    notificar("OK.ru", "Descargando en segundo plano: %s" % nombre[:40])
 
-    def _prog(leidos, total):
-        pct = int(leidos * 100 / total) if total else 0
-        prog.update(pct, "%s / %s" % (_mb(leidos), _mb(total)) if total else _mb(leidos))
 
+def _hilo_descarga(url_video, destino, nombre):
+    """Baja el video en un hilo aparte, con barra de FONDO (no bloquea Kodi)."""
+    datos = _ruta_datos()
+    cerrojo = None
+    barra = None
+    ok = False
     try:
-        ok = okru.descargar_video(elegido["url"], destino, progreso=_prog,
-                                  cancelado=prog.iscanceled)
+        # de una en una: si ya hay una descarga en marcha, esta espera su turno
+        cerrojo = open(os.path.join(datos, "descarga.lock"), "w")
+        try:
+            import fcntl
+            try:
+                fcntl.flock(cerrojo, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except Exception:
+                notificar("OK.ru", "En cola: %s" % nombre[:40])
+                fcntl.flock(cerrojo, fcntl.LOCK_EX)   # espera a que acabe la otra
+        except ImportError:
+            pass
+
+        barra = xbmcgui.DialogProgressBG()
+        barra.create("OK.ru", nombre)
+        ultimo = [0.0]
+
+        def _prog(leidos, total):
+            ahora = time.time()
+            if ahora - ultimo[0] < 1.0:          # una actualizacion por segundo basta
+                return
+            ultimo[0] = ahora
+            pct = int(leidos * 100 / total) if total else 0
+            txt = ("%s / %s" % (_mb(leidos), _mb(total))) if total else _mb(leidos)
+            try:
+                barra.update(pct, message="%s  %s" % (nombre[:42], txt))
+            except Exception:
+                pass
+
+        ok = okru.descargar_video(url_video, destino, progreso=_prog,
+                                  cancelado=_esta_cancelado)
     except Exception:
         import traceback
-        xbmc.log("OK.ru: error descargando: " + traceback.format_exc(), xbmc.LOGERROR)
-        notificar("OK.ru", "Error al descargar. Mira el registro de Kodi")
+        xbmc.log("OK.ru: error descargando en segundo plano: " + traceback.format_exc(),
+                 xbmc.LOGERROR)
         ok = False
     finally:
-        prog.close()
+        if barra is not None:
+            try:
+                barra.close()
+            except Exception:
+                pass
+        if cerrojo is not None:
+            try:
+                cerrojo.close()                  # al cerrar se suelta el cerrojo
+            except Exception:
+                pass
 
     if ok:
         xbmc.log("OK.ru: descargado %s" % destino, xbmc.LOGINFO)
-        notificar("OK.ru", "Descargado: %s" % nombre)
+        notificar("OK.ru", "Descargado: %s" % nombre[:45])
     else:
         try:
             if os.path.exists(destino):
-                os.remove(destino)      # no dejar medio fichero suelto
+                os.remove(destino)               # no dejar medio fichero suelto
         except Exception:
             pass
-        notificar("OK.ru", "Descarga cancelada")
+        cancelado = os.path.exists(os.path.join(datos, "cancelar"))
+        notificar("OK.ru", "Descarga cancelada" if cancelado else "Error al descargar")
+    _limpiar_cancelar()
+
+
+def cancelar_descargas():
+    """Pide parar la descarga en curso (la barra de fondo no tiene boton)."""
+    datos = _ruta_datos()
+    en_curso = True
+    try:
+        import fcntl
+        with open(os.path.join(datos, "descarga.lock"), "a") as f:
+            try:
+                fcntl.flock(f, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                fcntl.flock(f, fcntl.LOCK_UN)
+                en_curso = False                 # el cerrojo estaba libre
+            except Exception:
+                en_curso = True
+    except Exception:
+        pass
+    if not en_curso:
+        notificar("OK.ru", "No hay ninguna descarga en curso")
+        return
+    _pedir_cancelar()
+    notificar("OK.ru", "Cancelando la descarga...")
 
 
 def router(params):
@@ -393,6 +512,8 @@ def router(params):
         reproducir(params.get("url", ""), params.get("titulo", ""))
     elif a == "descargar":
         descargar(params.get("url", ""), params.get("titulo", ""))
+    elif a == "cancelar_descargas":
+        cancelar_descargas()
     else:
         menu_principal()
 
