@@ -75,7 +75,7 @@ def _idioma_pref():
 def menu_principal():
     xbmcplugin.setContent(HANDLE, "files")
     items = [
-        ("Buscar", {"action": "buscar"}, "DefaultAddonsSearch.png"),
+        ("Buscar", {"action": "buscar_menu"}, "DefaultAddonsSearch.png"),
         ("Novedades", {"action": "novedades"}, "DefaultRecentlyAddedMovies.png"),
         ("Por genero", {"action": "generos"}, "DefaultGenre.png"),
         ("Por año", {"action": "anios"}, "DefaultYear.png"),
@@ -119,10 +119,98 @@ def idiomas():
     xbmcplugin.endOfDirectory(HANDLE)
 
 
-def buscar():
-    teclado = xbmcgui.Dialog().input("Buscar en OK.ru", type=xbmcgui.INPUT_ALPHANUM)
-    if not teclado:
+MAX_HISTORIAL = 12
+
+
+def _ruta_historial():
+    return "special://profile/addon_data/%s/historial_busquedas.json" % ADDON_ID
+
+
+def _leer_historial():
+    """Lista de busquedas guardadas, la mas reciente primero."""
+    import json
+    import xbmcvfs
+    try:
+        ruta = _ruta_historial()
+        if not xbmcvfs.exists(ruta):
+            return []
+        with xbmcvfs.File(ruta) as f:
+            datos = json.loads(f.read() or "[]")
+        if isinstance(datos, list):
+            return [str(x) for x in datos if str(x).strip()]
+    except Exception:
+        import traceback
+        xbmc.log("OK.ru: no pude leer el historial: " + traceback.format_exc(), xbmc.LOGERROR)
+    return []
+
+
+def _guardar_historial(lista):
+    import json
+    import xbmcvfs
+    try:
+        xbmcvfs.mkdirs("special://profile/addon_data/%s/" % ADDON_ID)
+        with xbmcvfs.File(_ruta_historial(), "w") as f:
+            f.write(json.dumps(lista, ensure_ascii=False))
+        return True
+    except Exception:
+        import traceback
+        xbmc.log("OK.ru: no pude guardar el historial: " + traceback.format_exc(), xbmc.LOGERROR)
+    return False
+
+
+def _anadir_busqueda(termino):
+    """Guarda el termino arriba del todo, sin duplicados y con tope."""
+    t = (termino or "").strip()
+    if not t:
         return
+    lista = [x for x in _leer_historial() if x.lower() != t.lower()]
+    lista.insert(0, t)
+    _guardar_historial(lista[:MAX_HISTORIAL])
+
+
+def buscar_menu():
+    """Lista de busquedas: escribir una nueva o repetir una guardada."""
+    xbmcplugin.setContent(HANDLE, "files")
+    historial = _leer_historial()
+
+    li = xbmcgui.ListItem(label="Escribir una búsqueda nueva")
+    li.setArt({"icon": "DefaultAddonsSearch.png"})
+    xbmcplugin.addDirectoryItem(HANDLE, url_for(action="buscar"), li, isFolder=True)
+
+    for t in historial:
+        li = xbmcgui.ListItem(label=t)
+        li.setArt({"icon": "DefaultAddonsSearch.png"})
+        li.addContextMenuItems([("Borrar esta búsqueda", "RunPlugin(%s)" % url_for(
+            action="borrar_busqueda", q=t))])
+        xbmcplugin.addDirectoryItem(HANDLE, url_for(action="repetir_busqueda", q=t), li, isFolder=True)
+
+    if historial:
+        li = xbmcgui.ListItem(label="Borrar todo el historial")
+        li.setArt({"icon": "DefaultAddonProgram.png"})
+        xbmcplugin.addDirectoryItem(HANDLE, url_for(action="borrar_historial"), li, isFolder=True)
+
+    xbmcplugin.endOfDirectory(HANDLE, cacheToDisc=False)
+
+
+def borrar_busqueda(termino):
+    lista = [x for x in _leer_historial() if x.lower() != (termino or "").strip().lower()]
+    _guardar_historial(lista)
+    xbmc.executebuiltin("Container.Refresh")
+
+
+def borrar_historial():
+    _guardar_historial([])
+    xbmc.executebuiltin("Container.Refresh")
+
+
+def buscar(termino=None):
+    teclado = (termino or "").strip()
+    if not teclado:
+        teclado = xbmcgui.Dialog().input("Buscar en OK.ru", type=xbmcgui.INPUT_ALPHANUM)
+        if not teclado:
+            return
+    teclado = teclado.strip()
+    _anadir_busqueda(teclado)
     # Antes esto llamaba a okru.buscar(), que son SOLO los buscadores externos:
     # y esos se limitan por IP, asi que la busqueda manual era la que mas fallaba.
     # Ahora va por el mismo camino que las secciones: primero el buscador con tu
@@ -491,6 +579,14 @@ def router(params):
     a = params.get("action")
     if a == "buscar":
         buscar()
+    elif a == "buscar_menu":
+        buscar_menu()
+    elif a == "repetir_busqueda":
+        buscar(params.get("q", ""))
+    elif a == "borrar_busqueda":
+        borrar_busqueda(params.get("q", ""))
+    elif a == "borrar_historial":
+        borrar_historial()
     elif a == "novedades":
         _con_progreso(lambda lim: okru.novedades(lim, _idioma_pref()))
     elif a == "generos":

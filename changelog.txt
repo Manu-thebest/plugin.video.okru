@@ -1,3 +1,10 @@
+0.2.6
+ - NUEVO: historial de busquedas. Al pulsar "Buscar" sale una lista con tus
+   ultimas busquedas (hasta 12): eliges una y se repite sin teclear nada.
+ - Se pueden borrar de una en una (menu contextual sobre ella) o todas de golpe
+   con la opcion del final de la lista.
+ - La busqueda que repites se pone la primera, para tenerla siempre a mano.
+
 0.2.5
  - NUEVO: las descargas van en SEGUNDO PLANO. Antes salia una ventana que no te
    dejaba hacer nada hasta que acabara; ahora baja con una barra de fondo (arriba
