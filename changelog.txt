@@ -1,3 +1,19 @@
+0.2.7
+ - ARREGLADO: la busqueda volvia a dar 0 resultados en muchos titulos. ok.ru ha
+   cambiado: ya no decide "video" por la URL, decide por su catalogo. Si la
+   pelicula la reconoce responde con peliculas; si no, responde con GRUPOS (en
+   ruso) y no hay nada que buscar.
+ - Ahora el buscador tiene tres vias: la de siempre, pulsar la pestana "Video"
+   de la barra (que no es un enlace: hay que pulsarla) y la pagina de videos de
+   ok.ru con su propio buscador.
+ - ARREGLADO: la primera busqueda se quedaba en about:blank y no(findeba) nada.
+ - ARREGLADO: los titulos salian con el nombre del grupo de ok.ru en vez del
+   nombre de la pelicula.
+ - El idioma preferido es ahora una PRIORIDAD (los de Castellano primero), no un
+   filtro: antes se descartaba todo lo que no lleve "Castellano" en el titulo y
+   la lista quedaba casi vacia.
+ - Las busquedas tardaban 40 s y ahora tardan entre 5 y 8 s.
+
 0.2.6
  - NUEVO: historial de busquedas. Al pulsar "Buscar" sale una lista con tus
    ultimas busquedas (hasta 12): eliges una y se repite sin teclear nada.

@@ -25,7 +25,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 CDP = "http://127.0.0.1:9222"
 PUERTO = 9223
-PAUSA_CARGA = 9.0
+PAUSA_CARGA = 5.0
 CACHE_TTL = 24 * 3600   # 24 h: lo que se repite no se vuelve a buscar en todo el dia
 _CACHE = {}             # (consulta, limite) -> (momento, resultados)
 _TAB = {"id": None}     # pestana reutilizada para las busquedas
@@ -174,6 +174,44 @@ def cerrar_pestana(tab_id):
         pass
 
 
+# La pestana "Video" de la barra de resultados de ok.ru NO es un enlace: es un
+# DIV que hay que pulsar. Si ok.ru redirige la busqueda a "Groups", hay que
+# pulsarlo para que cambie a "st.mode=Movie" y enseñe los videos.
+JS_PULSAR_VIDEO = r"""
+(() => {
+  const cands = [];
+  document.querySelectorAll('div,li,a,span,button').forEach(e => {
+    const t = (e.innerText || '').replace(/\s+/g, ' ').trim();
+    if (t === 'Video' || t === 'Videos' || t === 'Видео') cands.push(e);
+  });
+  // primero el que se ve (la barra de pestanas de la pagina de busqueda)
+  const visible = cands.filter(e => e.offsetParent || e.getClientRects().length);
+  const elegido = visible[0] || cands[0];
+  if (!elegido) return 'no hay pestana Video';
+  (elegido.closest('button') || elegido).click();
+  return 'pulsada: <' + elegido.tagName + ' class="' + (elegido.className || '').slice(0, 60) + '">';
+})()
+"""
+
+# La pagina /video/search tiene su propio buscador (input type=search sin name).
+JS_BUSCAR_EN_PAGINA_VIDEO = r"""
+(() => {
+  const inp = document.querySelector('input[type="search"][placeholder*="videos and channels"]')
+          || document.querySelector('input[type="search"]');
+  if (!inp) return 'sin buscador';
+  const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
+  setter.call(inp, %s);
+  inp.dispatchEvent(new Event('input', {bubbles: true}));
+  inp.dispatchEvent(new Event('change', {bubbles: true}));
+  inp.focus();
+  ['keydown', 'keypress', 'keyup'].forEach(tipo => {
+    inp.dispatchEvent(new KeyboardEvent(tipo, {key: 'Enter', code: 'Enter', keyCode: 13,
+                                               which: 13, bubbles: true, cancelable: true}));
+  });
+  return 'busqueda escrita';
+})()
+"""
+
 JS_RESULTADOS = r"""
 (() => {
   const fuera = [];
@@ -184,12 +222,21 @@ JS_RESULTADOS = r"""
     if (!m) continue;
     const id = m[1];
     if (vistos.has(id)) continue;
+
+    // El texto del ENLACE es el titulo del video ("Dune - I Cant Stop Raving...").
+    // Si no lo tiene, se busca el contenedor del resultado, PERO_protegiendo el
+    // nombre del grupo: el contenedor grande ("video-card_lk") mete dentro el
+    // texto de todo el grupo y el titulo del video, y nos salia el grupo entero.
     let texto = limpia(a.innerText || a.textContent || '');
     if (texto.length < 4) {
-      const caja = a.closest('[class*="video"], [data-id], li, div');
-      if (caja) texto = limpia(caja.innerText || '').slice(0, 160);
+      const caja = a.closest('[class*="video_search_result"], [class*="video-card"], [data-id], li, div');
+      if (caja) {
+        const propio = caja.querySelector('[class*="video_search_result_link"], [class*="video_search_result_title"], [class*="title"], [class*="name"]');
+        texto = limpia((propio && propio.innerText) || caja.innerText || '').slice(0, 160);
+      }
     }
     if (texto.length < 4) continue;
+
     vistos.add(id);
     fuera.push({ id: id, titulo: texto.slice(0, 160), url: 'https://ok.ru/video/' + id });
   }
@@ -213,8 +260,110 @@ def _tab_reutilizable():
     return _TAB["id"], True
 
 
+def _evaluar(tab, js):
+    """Evalua JS en la pestana y devuelve el objeto que devuelve el JS."""
+    with urllib.request.urlopen(CDP + "/json/list", timeout=10) as r:
+        info = [t for t in json.load(r) if t.get("id") == tab]
+    if not info:
+        raise RuntimeError("la pestana se cerro")
+    c = Cdp(info[0]["webSocketDebuggerUrl"])
+    try:
+        r = c.llamar("Runtime.evaluate", {"expression": js, "returnByValue": True})
+    finally:
+        c.cerrar()
+    valor = r.get("result", {}).get("result", {}).get("value")
+    if not valor:
+        return None
+    try:
+        return json.loads(valor)
+    except ValueError:
+        return valor
+
+
+def _esperar_resultados(tab, intentos=4, espera_inicial=0, espera_extra=3):
+    """Sondea el DOM hasta que aparezcan resultados de video."""
+    for intento in range(intentos):
+        if intento == 0 and espera_inicial:
+            time.sleep(espera_inicial)
+        elif intento > 0:
+            time.sleep(espera_extra + intento)
+        datos = _evaluar(tab, JS_RESULTADOS)
+        if isinstance(datos, dict) and datos.get("resultados"):
+            return datos
+    return _evaluar(tab, JS_RESULTADOS) or {}
+
+
+def _navegar(tab, url):
+    info = [t for t in _pestanas() if t.get("id") == tab]
+    if not info:
+        return
+    c = Cdp(info[0]["webSocketDebuggerUrl"])
+    try:
+        c.llamar("Page.enable")
+        c.llamar("Page.navigate", {"url": url})
+    finally:
+        c.cerrar()
+
+
+def _buscar_pulsando_video(q, limite, tab=None, nueva=None):
+    """ok.ru redirige a 'Groups' cuando no reconoce la pelicula. La pestana
+    'Video' de la barra de resultados (un DIV, no un enlace) lleva a los videos:
+    hay que pulsarla con un clic.
+
+    Si se pasa 'tab', se reutiliza la pestana que ya esta cargada (no se vuelve
+    a navegar): asi la segunda via no cuesta otra carga de la pagina."""
+    propia = tab is None
+    if propia:
+        tab, nueva = _tab_reutilizable()
+        _navegar(tab, "https://ok.ru/dk?st.cmd=searchResult&st.query="
+                     + urllib.parse.quote(q) + "&st.mode=Video")
+        time.sleep(PAUSA_CARGA)
+        datos = _evaluar(tab, JS_RESULTADOS)
+        if isinstance(datos, dict) and datos.get("resultados"):
+            return datos.get("resultados")[:limite]
+    try:
+        # redirige a Groups: pulsamos la pestana 'Video'
+        _evaluar(tab, JS_PULSAR_VIDEO)
+        time.sleep(3)
+        datos = _esperar_resultados(tab, intentos=2, espera_extra=2)
+        if isinstance(datos, dict) and datos.get("resultados"):
+            return datos.get("resultados")[:limite]
+        return []
+    finally:
+        if propia and nueva:
+            cerrar_pestana(tab)
+            _TAB["id"] = None
+
+
+def _buscar_en_pagina_videos(q, limite):
+    """La pagina /video/search tiene su propio buscador. Rellenarlo y pulsar
+    Enter busca SOLO videos (es la pagina de videos de ok.ru)."""
+    tab, nueva = _tab_reutilizable()
+    try:
+        _navegar(tab, "https://ok.ru/video/search")
+        time.sleep(PAUSA_CARGA)
+        _evaluar(tab, JS_BUSCAR_EN_PAGINA_VIDEO % json.dumps(q))
+        time.sleep(3)
+        datos = _esperar_resultados(tab, intentos=3, espera_extra=2)
+        if isinstance(datos, dict) and datos.get("resultados"):
+            return datos.get("resultados")[:limite]
+        return []
+    finally:
+        if nueva:
+            cerrar_pestana(tab)
+            _TAB["id"] = None
+
+
 def buscar(q, limite=30):
-    """Busca en ok.ru dentro del navegador con sesion (con cache y pestana reutilizada)."""
+    """Busca en ok.ru dentro del navegador con sesion (con cache y pestana reutilizada).
+
+    ok.ru ya no decide 'video' por la URL: si reconoce la pelicula responde con
+    'st.mode=Movie', y si no, con 'st.mode=Groups' (grupos en ruso). Por eso ahora
+    hay tres vias, en este orden:
+      1) la URL de siempre (funciona cuando ok.ru reconoce el titulo)
+      2) pulsando la pestana 'Video' de la barra (funciona tambien sin reconocerlo)
+      3) la pagina /video/search con su propio buscador
+    """
     guardado = _cache_get(q, limite)
     if guardado is not None:
         print("cache: '%s' servido de memoria" % q, flush=True)
@@ -222,45 +371,50 @@ def buscar(q, limite=30):
     if not _navegador_vivo():
         if not arrancar_navegador():
             raise RuntimeError("no he podido arrancar el navegador del add-on")
+
     tab, nueva = _tab_reutilizable()
     url = "https://ok.ru/dk?st.cmd=searchResult&st.query=" + urllib.parse.quote(q) + "&st.mode=Video"
     try:
-        if not nueva:
-            info = [t for t in _pestanas() if t.get("id") == tab]
-            if info:
-                c = Cdp(info[0]["webSocketDebuggerUrl"])
-                try:
-                    c.llamar("Page.enable")
-                    c.llamar("Page.navigate", {"url": url})
-                finally:
-                    c.cerrar()
+        # Navegar SIEMPRE, tambien con la pestana nueva: si no, la primera
+        # busqueda se queda en about:blank y no encuentra nada (trampa del
+        # codigo original).
+        _navegar(tab, url)
         time.sleep(PAUSA_CARGA)
-        for intento in range(5):
-            with urllib.request.urlopen(CDP + "/json/list", timeout=10) as r:
-                info = [t for t in json.load(r) if t.get("id") == tab]
-            if not info:
-                raise RuntimeError("la pestana se cerro")
-            c = Cdp(info[0]["webSocketDebuggerUrl"])
-            try:
-                r = c.llamar("Runtime.evaluate", {"expression": JS_RESULTADOS, "returnByValue": True})
-                valor = r.get("result", {}).get("result", {}).get("value")
-                if valor:
-                    datos = json.loads(valor)
-                    if datos.get("resultados"):
-                        res = datos["resultados"][:limite]
-                        _cache_set(q, limite, res)
-                        return res
-                    if intento < 4:
-                        time.sleep(4 + intento * 2)
-                        continue
-                    return []
-            finally:
-                c.cerrar()
-        return []
+        # una sola pasada rapida: si ok.ru ha ido a Groups no hay nada que mirar
+        datos = _evaluar(tab, JS_RESULTADOS)
+        if isinstance(datos, dict) and datos.get("resultados"):
+            res = datos["resultados"][:limite]
+            _cache_set(q, limite, res)
+            print("buscar '%s': %d resultados (via directa)" % (q, len(res)), flush=True)
+            return res
+
+        # via 2: ok.ru ha redirigido a Groups -> pulsar la pestana 'Video'
+        # (se reutiliza esta misma pestana: no se vuelve a cargar la pagina)
+        try:
+            res = _buscar_pulsando_video(q, limite, tab=tab, nueva=nueva)
+            if res:
+                _cache_set(q, limite, res)
+                print("buscar '%s': %d resultados (pulsando la pestana Video)" % (q, len(res)), flush=True)
+                return res
+        except Exception as e:
+            print("buscar '%s': la pestana Video fallo (%s)" % (q, type(e).__name__), flush=True)
     finally:
         if nueva:
             cerrar_pestana(tab)
             _TAB["id"] = None
+
+    # via 3: la pagina de videos con su propio buscador
+    try:
+        res = _buscar_en_pagina_videos(q, limite)
+        if res:
+            _cache_set(q, limite, res)
+            print("buscar '%s': %d resultados (pagina de videos)" % (q, len(res)), flush=True)
+            return res
+    except Exception as e:
+        print("buscar '%s': la pagina de videos fallo (%s)" % (q, type(e).__name__), flush=True)
+
+    print("buscar '%s': sin resultados" % q, flush=True)
+    return []
 
 
 def cookies_okru():

@@ -240,13 +240,16 @@ def _con_progreso(fn, titulo_listado=""):
         prog.close()
     if not resultados:
         xbmc.log("OK.ru: la busqueda no devolvio nada", xbmc.LOGERROR)
-        notificar("OK.ru", "Sin resultados")
+        notificar("OK.ru", "OK.ru no ha encontrado esa busqueda")
         return
+    # El idioma preferido es una PRIORIDAD, no un filtro: ok.ru rotula los
+    # titulos de forma desigual (muchos en ruso o ingles sin etiqueta), y
+    # descartar el resto dejaba la lista casi vacia.
     pref = _idioma_pref()
     if pref and pref != "Cualquiera":
-        con = [r for r in resultados if r["idioma"] == pref]
-        if con:
-            resultados = con
+        con_preferido = [r for r in resultados if r["idioma"] == pref]
+        otros = [r for r in resultados if r["idioma"] != pref]
+        resultados = con_preferido + otros
     listar(resultados)
 
 
