@@ -26,6 +26,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 CDP = "http://127.0.0.1:9222"
 PUERTO = 9223
 PAUSA_CARGA = 5.0
+PAUSA_SCROLL = 2.0      # espera entre bajadas de la pagina de resultados
 CACHE_TTL = 24 * 3600   # 24 h: lo que se repite no se vuelve a buscar en todo el dia
 _CACHE = {}             # (consulta, limite) -> (momento, resultados)
 _TAB = {"id": None}     # pestana reutilizada para las busquedas
@@ -293,6 +294,57 @@ def _esperar_resultados(tab, intentos=4, espera_inicial=0, espera_extra=3):
     return _evaluar(tab, JS_RESULTADOS) or {}
 
 
+# ok.ru sirve los resultados de 20 en 20 y carga mas al bajar (scroll infinito).
+# Sin bajar la pagina el add-on solo veia la primera tanda: de ahi que la busqueda
+# "sacara muy pocas entradas comparada con la web".
+JS_BAJAR = r"""
+(() => {
+  let alto_antes = 0, conts = 0;
+  document.querySelectorAll('*').forEach(e => {
+    if (e.scrollHeight > e.clientHeight + 200 && e.clientHeight > 200) {
+      alto_antes += e.scrollHeight; conts++;
+      e.scrollTop = e.scrollHeight;
+    }
+  });
+  if (!conts) alto_antes = document.body.scrollHeight;
+  window.scrollTo(0, document.body.scrollHeight);
+  window.dispatchEvent(new Event('scroll'));
+  return JSON.stringify({alto_antes: alto_antes, contenedores: conts});
+})()
+"""
+
+
+def _ampliar(tab, limite, datos, tope=25):
+    """Baja la pagina hasta juntar 'limite' resultados (o hasta que ya no crezca).
+
+    Devuelve el ultimo objeto con 'resultados'. Cada bajada aporta ~20 mas.
+    """
+    if not isinstance(datos, dict):
+        return datos
+    res = datos.get("resultados") or []
+    vueltas = 0
+    sin_crecer = 0
+    while len(res) < limite and vueltas < tope:
+        _evaluar(tab, JS_BAJAR)
+        time.sleep(PAUSA_SCROLL)
+        nuevos = _evaluar(tab, JS_RESULTADOS)
+        vueltas += 1
+        if not isinstance(nuevos, dict):
+            break
+        nuevos_res = nuevos.get("resultados") or []
+        if len(nuevos_res) <= len(res):
+            # dos bajadas seguidas sin nada nuevo = se acabo (una sola no basta:
+            # a veces la pagina tarda en pedir la siguiente tanda y se quedaba
+            # con 19 resultados en vez de 60)
+            sin_crecer += 1
+            if sin_crecer >= 2:
+                break
+            continue
+        sin_crecer = 0
+        datos, res = nuevos, nuevos_res
+    return datos
+
+
 def _navegar(tab, url):
     info = [t for t in _pestanas() if t.get("id") == tab]
     if not info:
@@ -320,14 +372,14 @@ def _buscar_pulsando_video(q, limite, tab=None, nueva=None):
         time.sleep(PAUSA_CARGA)
         datos = _evaluar(tab, JS_RESULTADOS)
         if isinstance(datos, dict) and datos.get("resultados"):
-            return datos.get("resultados")[:limite]
+            return (_ampliar(tab, limite, datos).get("resultados") or [])[:limite]
     try:
         # redirige a Groups: pulsamos la pestana 'Video'
         _evaluar(tab, JS_PULSAR_VIDEO)
         time.sleep(3)
         datos = _esperar_resultados(tab, intentos=2, espera_extra=2)
         if isinstance(datos, dict) and datos.get("resultados"):
-            return datos.get("resultados")[:limite]
+            return (_ampliar(tab, limite, datos).get("resultados") or [])[:limite]
         return []
     finally:
         if propia and nueva:
@@ -346,7 +398,7 @@ def _buscar_en_pagina_videos(q, limite):
         time.sleep(3)
         datos = _esperar_resultados(tab, intentos=3, espera_extra=2)
         if isinstance(datos, dict) and datos.get("resultados"):
-            return datos.get("resultados")[:limite]
+            return (_ampliar(tab, limite, datos).get("resultados") or [])[:limite]
         return []
     finally:
         if nueva:
@@ -383,7 +435,8 @@ def buscar(q, limite=30):
         # una sola pasada rapida: si ok.ru ha ido a Groups no hay nada que mirar
         datos = _evaluar(tab, JS_RESULTADOS)
         if isinstance(datos, dict) and datos.get("resultados"):
-            res = datos["resultados"][:limite]
+            datos = _ampliar(tab, limite, datos)
+            res = (datos.get("resultados") or [])[:limite]
             _cache_set(q, limite, res)
             print("buscar '%s': %d resultados (via directa)" % (q, len(res)), flush=True)
             return res

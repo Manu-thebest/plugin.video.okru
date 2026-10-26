@@ -29,7 +29,7 @@
     <category label="Idioma y resultados">
         <setting id="idioma_preferido" type="labelenum" label="Idioma preferido"
                  values="Castellano|Latino|VOSE|Cualquiera" default="Castellano"/>
-        <setting id="resultados" type="integer" label="Cuántos resultados por búsqueda" default="30">
+        <setting id="resultados" type="integer" label="Cuántos resultados por búsqueda" default="60">
             <level>0</level>
             <constraints>
                 <minimum>10</minimum>

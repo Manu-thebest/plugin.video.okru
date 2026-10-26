@@ -1,3 +1,21 @@
+0.2.9
+ - MEJORADO: la busqueda ya NO depende del ordenador principal. El add-on pregunta
+   directamente al buscador de la web de ok.ru, con la sesion (cookie) que ya tiene
+   guardada, y pide los resultados de 20 en 20 hasta juntar los del ajuste. Es lo
+   mismo que hace la web al pulsar la pestaña "Video", asi que salen las mismas
+   entradas. Ademas es mucho mas rapido (2-4 segundos frente a 12-30).
+   El buscador del ordenador principal queda solo como reserva.
+0.2.8
+ - ARREGLADO: la busqueda sacaba muy pocas entradas comparada con la web. ok.ru
+   sirve los resultados de 20 en 20 y carga mas al BAJAR la pagina; el add-on se
+   quedaba con la primera tanda. Ahora el buscador va bajando hasta juntar los
+   que pida el ajuste (por defecto 60) o hasta que ya no salgan mas.
+ - ARREGLADO: la busqueda se quedaba sin resultados cuando al equipo principal le
+   cambiaba la IP (la Pi apuntaba a .64 y el principal paso a .44, asi que caia a
+   los buscadores de internet, que estan limitados y devuelven cuatro cosas).
+   Ahora se busca el buscador POR SU NOMBRE en la red (Ryzen8745HS.local), que no
+   cambia aunque cambie la IP, y las IPs quedan solo de reserva.
+ - Cuantos resultados por busqueda: 60 por defecto (antes 30), ajustable hasta 100.
 0.2.7
  - ARREGLADO: la busqueda volvia a dar 0 resultados en muchos titulos. ok.ru ha
    cambiado: ya no decide "video" por la URL, decide por su catalogo. Si la

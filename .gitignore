@@ -1,3 +1,6 @@
 __pycache__/
 *.pyc
 *.pyo
+
+# herramienta interna de despliegue (rutas y credenciales locales)
+servicio/desplegar-okru.sh

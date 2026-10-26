@@ -428,8 +428,100 @@ def buscar_con_sesion(consulta, limite=30):
     return salida
 
 
+API_BUSQUEDA = "https://ok.ru/web-api/v2/search/portal"
+_API_TANDA = 20         # ok.ru devuelve los resultados (y los cuenta) de 20 en 20
+
+
+def _api_tanda(consulta, primera=0, modo="Movie"):
+    """Pide UNA tanda de 20 resultados al buscador de la propia web de ok.ru.
+
+    Es el mismo JSON que usa la pagina cuando pulsas la pestana "Video": asi
+    devuelve lo mismo que la web (y mucho mas rapido que leer el HTML).
+    """
+    cuerpo = json.dumps({"id": 4, "parameters": {
+        "query": consulta,
+        "filters": {"st.cmd": "searchResult", "st.mode": modo, "st.query": consulta,
+                    "st.grmode": "Groups", "st.mmode": "Artist"},
+        "chunk": {"firstIndex": primera, "offset": primera},
+        "meta": {"prefetch": False, "voice": False}}}).encode("utf-8")
+    peticion = urllib.request.Request(API_BUSQUEDA, data=cuerpo, headers={
+        "User-Agent": UA,
+        "Accept": "application/json, text/plain, */*",
+        "Content-Type": "application/json",
+        "Accept-Language": "es-ES,es;q=0.9,en;q=0.8",
+        "Origin": "https://ok.ru",
+        "Referer": "https://ok.ru/dk?st.cmd=searchResult&st.query=" + urllib.parse.quote(consulta),
+        "Cookie": COOKIES,
+    })
+    with urllib.request.urlopen(peticion, timeout=30) as r:
+        return json.loads(r.read().decode("utf-8", "replace"))
+
+
+def buscar_api(consulta, limite=60, modo="Movie"):
+    """Busca en ok.ru con su propio buscador, con la sesion (cookies) del usuario.
+
+    Va directo a la web y pide los resultados de 20 en 20 hasta juntar 'limite'.
+    No necesita navegador ni ningun otro equipo de casa: solo la cookie.
+    """
+    if not COOKIES:
+        raise BuscadorLimitado("sin cookies de sesion")
+    clave = (consulta.lower().strip(), limite, "api", modo)
+    if clave in _CACHE:
+        return _CACHE[clave]
+
+    salida, vistos = [], set()
+    tandas = int(limite / _API_TANDA) + 2
+    for i in range(tandas):
+        primera = i * _API_TANDA
+        if primera >= limite:
+            break
+        d = _api_tanda(consulta, primera, modo)
+        if not isinstance(d, dict) or not d.get("success"):
+            break
+        cine = (((d.get("result") or {}).get("video") or {}).get("movies") or {})
+        items = cine.get("results") or []
+        nuevos = 0
+        for it in items:
+            info = ((it or {}).get("movie") or {}).get("info") or {}
+            vid = str(info.get("id") or "").strip()
+            titulo = re.sub(r"\s+", " ", html.unescape(info.get("title") or "")).strip()
+            if not vid or vid in vistos or len(titulo) < 2:
+                continue
+            vistos.add(vid)
+            nuevos += 1
+            # la propia respuesta trae la miniatura y la sinopsis: asi NO hay que
+            # pedir la pagina de cada video solo para poner el icono (eran 12
+            # peticiones y 14 segundos de espera al abrir la lista)
+            buscar_info = ((it or {}).get("searchVideoInfo") or {})
+            mini = (buscar_info.get("imageUrl") or (info.get("thumbnail") or {}).get("small")
+                    or (info.get("thumbnail") or {}).get("big") or "")
+            sino = re.sub(r"\s+", " ", html.unescape(info.get("description") or "")).strip()
+            salida.append({"id": vid, "url": "https://ok.ru/video/" + vid,
+                           "titulo": titulo, "idioma": detectar_idioma(titulo),
+                           "imagen": mini, "sinopsis": sino[:600]})
+            if len(salida) >= limite:
+                break
+        total = int(cine.get("totalCount") or 0)
+        if len(salida) >= limite or not nuevos:
+            break
+        if total and primera + _API_TANDA >= total:
+            break
+        time.sleep(0.3)
+
+    log("busqueda ok.ru '%s': %d resultados (buscador de la web + sesion)" % (consulta, len(salida)))
+    if not salida:
+        raise BuscadorLimitado("el buscador de ok.ru no devolvio videos (sesion caducada?)")
+    _CACHE[clave] = salida[:limite]
+    return salida[:limite]
+
+
 def buscar_inteligente(consulta, limite=30):
-    """Servicio local (navegador con sesion) primero; luego cookies; luego buscadores."""
+    """Buscador propio de ok.ru (JSON + cookie) primero; luego el resto."""
+    if COOKIES:
+        try:
+            return buscar_api(consulta, limite)
+        except Exception as e:
+            log("buscador de ok.ru no util (%s); sigo con el servicio local" % e)
     try:
         return buscar_servicio(consulta, limite)
     except BuscadorLimitado as e:
@@ -442,9 +534,18 @@ def buscar_inteligente(consulta, limite=30):
     return buscar(consulta, limite)
 
 
+
 # ---------------------------------------------------------------- servicio local (navegador)
 SERVICIO = "http://127.0.0.1:9223"
-CANDIDATOS_SERVICIO = ["http://127.0.0.1:9223", "http://192.168.1.64:9223"]  # propio y el principal
+# 127.0.0.1 = este mismo equipo. El buscador bueno vive en el equipo principal, y
+# se busca PRIMERO POR SU NOMBRE (Ryzen8745HS.local, via mDNS): asi la Pi sigue
+# encontrandolo aunque le cambie la IP (era el fallo: apuntaba a .64 y el Chuwi
+# paso a .44, con lo que la busqueda caia a los buscadores de internet y salian
+# cuatro entradas). Las IPs quedan de reserva, por si el nombre no resuelve.
+CANDIDATOS_SERVICIO = ["http://127.0.0.1:9223",
+                       "http://Ryzen8745HS.local:9223",
+                       "http://192.168.1.44:9223",
+                       "http://192.168.1.64:9223"]
 _SERVICIO_BUENO = ""    # recordamos el que funciona para no volver a probar los otros
 
 
@@ -462,7 +563,7 @@ def set_servicio(url):
 
 def _lista_candidatos(preferidos=None):
     """Orden de direcciones a probar: el propio equipo, lo que diga el ajuste y el principal."""
-    base = ["http://127.0.0.1:9223", "http://192.168.1.64:9223"]
+    base = list(CANDIDATOS_SERVICIO)
     salida = []
     for u in (base[:1] + (preferidos or []) + base[1:]):
         u = u.rstrip("/")

@@ -30,13 +30,24 @@ Esto no es un capricho del add-on, es como funciona ok.ru:
 2. **Los enlaces de video van firmados.** Sin la sesion, al reproducir dan error
    (`could not open file`). Con la sesion, responden bien.
 
-Asi que el add-on necesita una sesion de ok.ru. Hay **dos formas** de darsela, y la buena es la primera.
+Asi que el add-on necesita una sesion de ok.ru. Hay **dos formas** de darsela.
 
-### Forma buena: el buscador local (recomendada)
+### Forma buena: la sesion en los ajustes (recomendada)
 
-Un pequenio servicio en tu red hace las busquedas **dentro de un navegador con tu sesion iniciada**.
-El add-on le pregunta y recibe los resultados. Ventajas: no hay nada que copiar a mano, no depende de
-buscadores externos y **funciona igual desde otros equipos de la casa** (por ejemplo, una Raspberry).
+En los **Ajustes** del add-on hay un campo **"Sesion de ok.ru (cookies)"**: pega ahi la cabecera `Cookie:`
+de tu navegador (F12 > Network > la primera peticion > Request Headers). La `AUTHCODE` de ok.ru dura
+alrededor de un anio, asi que merece la pena.
+
+Con eso el add-on busca **directamente en el buscador de la web de ok.ru** — el mismo que usa la propia
+pagina al pulsar la pestaña "Video" — pidiendo los resultados **de 20 en 20**: 60 entradas en 3-4 segundos,
+con caratula y sinopsis. No hace falta navegador ni ningun otro equipo encendido: solo la cookie.
+
+> El add-on **no guarda tus cookies en el codigo**: solo las lee de sus ajustes. No se suben a ningun sitio.
+
+### Opcional: el buscador local (carpeta `servicio/`)
+
+Si no quieres copiar la cookie a mano, un pequenio servicio hace las busquedas **dentro de un navegador
+ya identificado** y el add-on le pregunta. Sirve de reserva: solo se usa si el buscador directo falla.
 
 Esta en la carpeta **`servicio/`**:
 
@@ -59,16 +70,6 @@ GET /estado              -> {"ok":true,"navegador":true,"sesion":true,"cache":N}
 GET /buscar?q=texto&n=30 -> {"ok":true,"resultados":[{"id","url","titulo","idioma"}]}
 GET /cookies             -> {"ok":true,"cookies":"..."}   (para que el add-on pueda reproducir)
 ```
-
-### Forma manual: pegar las cookies
-
-Si prefieres no montar el servicio, en los **Ajustes** hay un campo **"Sesion de ok.ru (cookies)"** donde
-puedes pegar la cabecera `Cookie:` de tu navegador (F12 > Network > la primera peticion > Request Headers).
-`AUTHCODE` de ok.ru dura alrededor de un anio, asi que merece la pena. El add-on usara esas cookies para
-buscar y para reproducir.
-
-> El add-on **no guarda tus cookies en el codigo**: solo las lee de sus ajustes (o del servicio). No se
-> suben a ningun sitio.
 
 ### De reserva: buscadores externos
 
