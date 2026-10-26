@@ -46,7 +46,7 @@
         <setting id="servicio_url" type="text" label="Dirección del buscador"
                  default="http://127.0.0.1:9223"/>
         <setting id="cookies_okru" type="text"
-                 label="Sesión de ok.ru (cookies) · solo si no hay buscador" default=""/>
+                 label="Sesión de ok.ru (cookies) · lo normal: pega aquí tu Cookie" default=""/>
     </category>
 
     <category label="Descargas">
