@@ -74,21 +74,58 @@ def _idioma_pref():
 
 def menu_principal():
     xbmcplugin.setContent(HANDLE, "files")
+    # (etiqueta, parametros, icono, si es para reproducir en vez de una carpeta)
     items = [
-        ("Buscar", {"action": "buscar_menu"}, "DefaultAddonsSearch.png"),
-        ("Novedades", {"action": "novedades"}, "DefaultRecentlyAddedMovies.png"),
-        ("Por genero", {"action": "generos"}, "DefaultGenre.png"),
-        ("Por año", {"action": "anios"}, "DefaultYear.png"),
-        ("Por idioma", {"action": "idiomas"}, "DefaultLanguage.png"),
-        ("Ajustes", {"action": "config"}, "DefaultAddonProgram.png"),
+        ("Buscar", {"action": "buscar_menu"}, "DefaultAddonsSearch.png", False),
+        ("Abrir un enlace de ok.ru", {"action": "abrir_enlace"}, "DefaultNetwork.png", True),
+        ("Novedades", {"action": "novedades"}, "DefaultRecentlyAddedMovies.png", False),
+        ("Por genero", {"action": "generos"}, "DefaultGenre.png", False),
+        ("Por año", {"action": "anios"}, "DefaultYear.png", False),
+        ("Por idioma", {"action": "idiomas"}, "DefaultLanguage.png", False),
+        ("Ajustes", {"action": "config"}, "DefaultAddonProgram.png", False),
     ]
     n = 0
-    for etiqueta, params, icono in items:
+    for etiqueta, params, icono, jugable in items:
         li = xbmcgui.ListItem(label=etiqueta)
         li.setArt({"icon": icono})
-        ok = xbmcplugin.addDirectoryItem(HANDLE, url_for(**params), li, isFolder=True)
+        if jugable:
+            li.setProperty("IsPlayable", "true")
+        ok = xbmcplugin.addDirectoryItem(HANDLE, url_for(**params), li, isFolder=not jugable)
         n += 1
     xbmcplugin.endOfDirectory(HANDLE, cacheToDisc=False)
+
+
+def _id_de_enlace(texto):
+    """Saca el numero del video de un enlace de ok.ru (o de un numero suelto)."""
+    import re as _re
+    t = (texto or "").strip()
+    m = _re.search(r"ok\.ru/(?:video|videoembed|live|movies)/(\d+)", t, _re.I)
+    if m:
+        return m.group(1)
+    m = _re.search(r"\b(\d{6,20})\b", t)      # han pegado solo el numero
+    return m.group(1) if m else ""
+
+
+def abrir_enlace():
+    """Reproduce un video de ok.ru pegando su enlace.
+
+    En ok.ru hay videos (por ejemplo los de contenido para adultos) que su
+    buscador NO devuelve nunca: solo se llega a ellos por el enlace del video o
+    por el grupo donde estan. Esto es para esos casos: se pega la direccion y se
+    reproduce igual que si se hubiera encontrado buscando.
+    """
+    entrada = xbmcgui.Dialog().input("Pega el enlace del video de ok.ru",
+                                     type=xbmcgui.INPUT_ALPHANUM)
+    if not entrada:
+        # se cancela sin mas: hay que decirle a Kodi que no hay nada que poner
+        xbmcplugin.setResolvedUrl(HANDLE, False, xbmcgui.ListItem())
+        return
+    vid = _id_de_enlace(entrada)
+    if not vid:
+        notificar("OK.ru", "Eso no parece un enlace de ok.ru")
+        xbmcplugin.setResolvedUrl(HANDLE, False, xbmcgui.ListItem())
+        return
+    reproducir("https://ok.ru/video/" + vid, "")
 
 
 def generos():
@@ -209,7 +246,15 @@ def buscar(termino=None):
         teclado = xbmcgui.Dialog().input("Buscar en OK.ru", type=xbmcgui.INPUT_ALPHANUM)
         if not teclado:
             return
-    teclado = teclado.strip()
+        teclado = teclado.strip()
+        _anadir_busqueda(teclado)
+        # El listado se abre en SU PROPIA direccion, con la busqueda dentro.
+        # Si se listara aqui mismo, el contenedor se quedaria apuntando a
+        # "buscar" sin termino, y al parar un video Kodi vuelve a ejecutar esa
+        # direccion: te pedia otra busqueda que no habias pedido. Con esto, al
+        # parar el video vuelve a la lista de resultados y ya.
+        xbmc.executebuiltin('Container.Update("%s")' % url_for(action="repetir_busqueda", q=teclado))
+        return
     _anadir_busqueda(teclado)
     # Antes esto llamaba a okru.buscar(), que son SOLO los buscadores externos:
     # y esos se limitan por IP, asi que la busqueda manual era la que mas fallaba.
@@ -224,6 +269,11 @@ def _con_progreso(fn, titulo_listado=""):
     prog.create("OK.ru", "Buscando en OK.ru...")
     try:
         resultados = fn(limite)
+    except okru.SinResultadosOkru:
+        # ok.ru ha contestado bien y no tiene nada: no es un fallo del add-on ni
+        # de la sesion, asi que se dice claro y no se habla de buscadores.
+        notificar("OK.ru", "OK.ru no tiene resultados para esa busqueda")
+        return
     except okru.BuscadorLimitado as e:
         # se guarda el motivo en el registro: "sin resultados" a secas no permite
         # saber si el buscador no responde, si la sesion ha caducado o si de verdad
@@ -282,7 +332,10 @@ def listar(resultados):
         ])
         xbmcplugin.addDirectoryItem(HANDLE, url_for(action="play", url=r["url"], titulo=r["titulo"]),
                                     li, isFolder=False)
-    xbmcplugin.endOfDirectory(HANDLE, cacheToDisc=False)
+    # cacheToDisc=True: la lista se queda en memoria. Si no, al parar un video
+    # Kodi vuelve a ejecutar la direccion del listado y repite la busqueda entera
+    # (barra de "Buscando..." y, si venia del teclado, otra ventana de busqueda).
+    xbmcplugin.endOfDirectory(HANDLE, cacheToDisc=True)
 
 
 def reproducir(url, titulo):
@@ -590,6 +643,8 @@ def router(params):
         borrar_busqueda(params.get("q", ""))
     elif a == "borrar_historial":
         borrar_historial()
+    elif a == "abrir_enlace":
+        abrir_enlace()
     elif a == "novedades":
         _con_progreso(lambda lim: okru.novedades(lim, _idioma_pref()))
     elif a == "generos":

@@ -1,3 +1,25 @@
+0.2.12
+ - NUEVO: "Abrir un enlace de ok.ru" en el menu. Se pega la direccion de un
+   video (o solo su numero) y se reproduce igual que si se hubiera encontrado
+   buscando. Sirve para los videos que el buscador de ok.ru no devuelve nunca,
+   como los de contenido para adultos: a esos solo se llega por su enlace o
+   entrando al grupo donde estan.
+ - El aviso de "sin resultados" ya no nombra a los buscadores de internet.
+0.2.11
+ - ARREGLADO (aviso): cuando ok.ru no tiene nada, el add-on decia "Bing sin
+   resultados", que hacia pensar que estaba roto. Ahora dice lo que pasa: "OK.ru
+   no tiene resultados para esa busqueda". ok.ru filtra su propio buscador de
+   videos: hay palabras (por ejemplo pornografia, tambien escrita en ruso) que
+   NO devuelven nada aunque estes identificado. No es cosa del add-on.
+0.2.10
+ - ARREGLADO: al parar un video te salia una ventana de busqueda que no habias
+   pedido. Pasaba con las busquedas hechas desde el teclado: el listado se
+   quedaba colgado de "buscar" SIN el termino, y al volver del reproductor Kodi
+   volvia a ejecutarlo, asi que pedia la busqueda otra vez. Ahora la lista se
+   abre con la busqueda dentro ("repetir_busqueda&q=..."), de modo que al parar
+   el video vuelve al listado de resultados.
+ - ADEMAS: la lista se queda en memoria, asi que volver a ella es instantaneo y
+   no repite la busqueda (antes salia la barra de "Buscando..." cada vez).
 0.2.9
  - MEJORADO: la busqueda ya NO depende del ordenador principal. El add-on pregunta
    directamente al buscador de la web de ok.ru, con la sesion (cookie) que ya tiene

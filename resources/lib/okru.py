@@ -23,6 +23,15 @@ class BuscadorLimitado(Exception):
     """El buscador ha limitado las peticiones."""
 
 
+class SinResultadosOkru(BuscadorLimitado):
+    """El buscador de ok.ru ha contestado bien, pero no tiene nada que dar.
+
+    No es un fallo: ok.ru filtra su propio buscador de videos (por ejemplo, no
+    devuelve NADA al buscar pornografia, ni en castellano ni en ruso), asi que
+    conviene decirlo tal cual en vez de culpar a los buscadores de internet.
+    """
+
+
 CALIDADES_ORDEN = ["mobile", "lowest", "low", "sd", "hd", "full", "quad", "ultra", "1080", "2160"]
 ETIQUETAS = {
     "mobile": "Movil", "lowest": "Minima (144p)", "low": "Baja (240p)", "sd": "SD (480p)",
@@ -510,16 +519,23 @@ def buscar_api(consulta, limite=60, modo="Movie"):
 
     log("busqueda ok.ru '%s': %d resultados (buscador de la web + sesion)" % (consulta, len(salida)))
     if not salida:
-        raise BuscadorLimitado("el buscador de ok.ru no devolvio videos (sesion caducada?)")
+        raise SinResultadosOkru("ok.ru no tiene resultados para esa busqueda")
     _CACHE[clave] = salida[:limite]
     return salida[:limite]
 
 
 def buscar_inteligente(consulta, limite=30):
     """Buscador propio de ok.ru (JSON + cookie) primero; luego el resto."""
+    sin_nada_en_okru = False
     if COOKIES:
         try:
             return buscar_api(consulta, limite)
+        except SinResultadosOkru as e:
+            # ok.ru ha contestado y no tiene nada. El servicio local y los
+            # buscadores de internet buscan LO MISMO en el MISMO sitio, asi que
+            # insistir solo hace esperar medio minuto para nada: se corta aqui.
+            log("ok.ru no tiene resultados (%s); no insisto" % e)
+            raise
         except Exception as e:
             log("buscador de ok.ru no util (%s); sigo con el servicio local" % e)
     try:
@@ -531,7 +547,12 @@ def buscar_inteligente(consulta, limite=30):
             return buscar_con_sesion(consulta, limite)
         except BuscadorLimitado as e:
             log("sesion no utilizable (%s); paso a buscadores" % e)
-    return buscar(consulta, limite)
+    try:
+        return buscar(consulta, limite)
+    except BuscadorLimitado:
+        if sin_nada_en_okru:
+            raise SinResultadosOkru("ok.ru no tiene resultados para esa busqueda")
+        raise
 
 
 
