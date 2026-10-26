@@ -10,6 +10,9 @@ Pensado para verlo comodo en la tele, con la mecanica de los add-ons clasicos (b
 Al abrirlo, un menu:
 
 - **Buscar** — escribes lo que quieras y te lista los videos (el idioma sale marcado en verde)
+- **Abrir un enlace de ok.ru** — pegas la direccion de un video (o solo su numero) y lo reproduce.
+  Sirve para los videos que el buscador de ok.ru no devuelve nunca, como los de contenido para
+  adultos: a esos solo se llega por su enlace o entrando al grupo donde estan
 - **Novedades** — lo mas reciente, ordenado por anio
 - **Por genero** — 14 generos
 - **Por anio** — de 2027 hacia atras
@@ -129,6 +132,8 @@ reproducir.
 - La eleccion de calidad solo aparece en los videos que traen varias; en otros hay una sola.
 - Las busquedas tardan unos segundos la primera vez (se navega de verdad); repetidas son instantaneas.
 - Sin sesion, la busqueda no puede funcionar. No hay forma de evitarlo.
+- ok.ru filtra su propio buscador: hay palabras (pornografia, tambien escrita en ruso) que no
+  devuelven NADA aunque la sesion sea buena. Para esos videos, usar **Abrir un enlace de ok.ru**.
 
 ---
 
